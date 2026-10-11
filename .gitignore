@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Secrets and local configuration
+.env
+
+# Local data: raw page samples and crawl output must never be committed (decision K12)
+data/
+local_samples/
+*.parquet
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

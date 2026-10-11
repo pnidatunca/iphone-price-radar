@@ -1,0 +1,34 @@
+# Non-secret settings. Secrets come from environment variables (see .env.example).
+
+crawler:
+  # Honest identity (decision K5): project name, repository and a contact address.
+  user_agent: "IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar; contact: CONTACT_EMAIL_PENDING)"
+  delay_seconds: [2.0, 3.5]      # random gap between two requests to the same site
+  max_requests_per_source: 1500  # per run (~70 minutes at 2.75 s per request)
+  max_consecutive_errors: 10     # the source is stopped for the run after this many errors in a row
+  max_retry_after_seconds: 60    # a longer Retry-After stops the source for the run instead of waiting
+  timeout_seconds: 25
+
+sources:
+  getmobil:
+    enabled: true
+    base_url: "https://getmobil.com"
+  easycep:
+    enabled: true
+    base_url: "https://easycep.com"
+
+retention:
+  detail_days: 90
+  score_days: 30
+  rejected_days: 30
+  ops_days: 180
+
+model:
+  target: log_price_usd
+  train_window_days: 90          # total window including the test week
+  test_window_days: 7
+  calibration_share: 0.2         # last 20% of the pre-test period, used for conformal calibration
+  valuation_coverage: 0.80
+  deal_coverage: 0.95
+  deal_min_discount: 0.08        # starting value; tuned with precision@20 labels
+  promote_min_improvement: 0.02  # challenger needs at least 2% relative MAPE improvement
