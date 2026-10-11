@@ -33,6 +33,15 @@ class CrawlerSettings(BaseModel):
         )
 
 
+class ScopeSettings(BaseModel):
+    excluded_models: list[str] = []
+
+    def includes(self, model_name: str) -> bool:
+        """True if a canonical model name such as "iPhone 13 Pro Max" is in scope (case-insensitive)."""
+        excluded = {name.casefold() for name in self.excluded_models}
+        return model_name.strip().casefold() not in excluded
+
+
 class SourceSettings(BaseModel):
     enabled: bool = True
     base_url: str
@@ -40,6 +49,7 @@ class SourceSettings(BaseModel):
 
 class Settings(BaseModel):
     crawler: CrawlerSettings
+    scope: ScopeSettings = ScopeSettings()
     sources: dict[str, SourceSettings]
     retention: dict[str, int] = {}
     model: dict[str, float | int | str] = {}

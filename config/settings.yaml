@@ -12,6 +12,22 @@ crawler:
   max_retry_after_seconds: 60    # a longer Retry-After stops the source for the run instead of waiting
   timeout_seconds: 25
 
+scope:
+  # Decision K21: iPhone X and newer, including iPhone SE (2020) and SE (2022). Older models are not collected.
+  excluded_models:
+    - iPhone 5
+    - iPhone 5c
+    - iPhone 5s
+    - iPhone SE (2016)
+    - iPhone 6
+    - iPhone 6 Plus
+    - iPhone 6s
+    - iPhone 6s Plus
+    - iPhone 7
+    - iPhone 7 Plus
+    - iPhone 8
+    - iPhone 8 Plus
+
 sources:
   getmobil:
     enabled: true

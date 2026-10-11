@@ -10,6 +10,14 @@ def test_settings_file_is_valid():
     assert settings.crawler.delay_seconds == (2.0, 3.5)
 
 
+def test_scope_starts_at_iphone_x():
+    scope = load_settings().scope
+    for model in ("iPhone X", "iPhone XR", "iPhone XS Max", "iPhone SE (2020)", "iPhone SE (2022)", "iPhone 16e"):
+        assert scope.includes(model), model
+    for model in ("iPhone 6", "iPhone 7 Plus", "iPhone 8", "iphone 8 plus", "iPhone SE (2016)"):
+        assert not scope.includes(model), model
+
+
 def test_policy_mirrors_the_settings():
     crawler = load_settings().crawler
     policy = crawler.policy()
