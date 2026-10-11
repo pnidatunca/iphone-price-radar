@@ -12,7 +12,6 @@ from price_radar.ingest.http_client import CrawlPolicy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = REPO_ROOT / "config" / "settings.yaml"
-CONTACT_PLACEHOLDER = "CONTACT_EMAIL_PENDING"
 
 
 class CrawlerSettings(BaseModel):
@@ -22,11 +21,6 @@ class CrawlerSettings(BaseModel):
     max_consecutive_errors: int = 10
     max_retry_after_seconds: float = 60.0
     timeout_seconds: float = 25.0
-
-    @property
-    def has_contact(self) -> bool:
-        """False while the contact address in the User-Agent is still the placeholder."""
-        return CONTACT_PLACEHOLDER not in self.user_agent
 
     def policy(self) -> CrawlPolicy:
         return CrawlPolicy(

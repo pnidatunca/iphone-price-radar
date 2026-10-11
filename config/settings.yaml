@@ -1,8 +1,9 @@
 # Non-secret settings. Secrets come from environment variables (see .env.example).
 
 crawler:
-  # Honest identity (decision K5): project name, repository and a contact address.
-  user_agent: "IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar; contact: CONTACT_EMAIL_PENDING)"
+  # Honest identity (decision K5): project name and a link to the notice for site owners in the README.
+  # robots.txt groups addressed to the product token "IphonePriceRadar" are honoured.
+  user_agent: "IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar#for-site-owners)"
   delay_seconds: [2.0, 3.5]      # random gap between two requests to the same site
   max_requests_per_source: 1500  # per run (~70 minutes at 2.75 s per request)
   max_consecutive_errors: 10     # the source is stopped for the run after this many errors in a row
