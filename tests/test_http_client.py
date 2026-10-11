@@ -67,6 +67,14 @@ def test_disallowed_url_is_never_requested():
     assert paths(calls) == ["/robots.txt"]
 
 
+def test_robots_group_for_our_bot_is_honoured():
+    robots = httpx.Response(200, text="User-agent: *\nAllow: /\n\nUser-agent: TestBot\nDisallow: /\n")
+    client, calls, _ = make_client({"/robots.txt": robots})
+    with pytest.raises(RobotsDisallowed):
+        client.get(f"{BASE}/a")
+    assert paths(calls) == ["/robots.txt"]
+
+
 def test_requests_are_spaced_and_identified():
     client, calls, fake = make_client({"/robots.txt": ROBOTS, "/a": httpx.Response(200), "/b": httpx.Response(200)})
     client.get(f"{BASE}/a")

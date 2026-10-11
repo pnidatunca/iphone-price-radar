@@ -4,7 +4,8 @@ The crawling policy is enforced here, so an adapter cannot bypass it:
 
 * one client per site, strictly sequential requests;
 * a random gap (default 2.0-3.5 s) between two requests;
-* robots.txt is honoured: a disallowed URL raises ``RobotsDisallowed`` without sending a request;
+* robots.txt is honoured, including groups addressed to the crawler's product token: a disallowed URL raises
+  ``RobotsDisallowed`` without sending a request;
 * a per-run request budget;
 * 429 and 5xx responses are retried once, honouring ``Retry-After`` up to a limit;
 * a bot challenge, a 401/403, a ``Retry-After`` above the limit, an unavailable robots.txt or too many consecutive
@@ -90,6 +91,7 @@ class PoliteClient:
         self.base_url = base_url.rstrip("/")
         self.host = urlsplit(self.base_url).hostname
         self.policy = policy
+        self.product_token = policy.user_agent.split("/", 1)[0].strip()
         self._sleep = sleep
         self._clock = clock
         self._rng = rng or random.Random()
@@ -141,7 +143,7 @@ class PoliteClient:
             except FetchFailed as err:
                 self._stop(f"robots.txt unavailable: {err}")
             if response.status_code == 200:
-                self._rules = parse_robots(response.text)
+                self._rules = parse_robots(response.text, self.product_token)
             elif response.status_code in (404, 410):
                 self._rules = []
             else:

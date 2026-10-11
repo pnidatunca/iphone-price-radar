@@ -64,9 +64,29 @@ def test_real_site_rules(robots, path, expected):
 
 
 def test_groups_for_other_bots_are_ignored():
-    rules = parse_robots("User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow: /private\n")
-    assert is_allowed(rules, "/public")
-    assert not is_allowed(rules, "/private/x")
+    robots = "User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow: /private\n"
+    for token in ("", "IphonePriceRadar"):
+        rules = parse_robots(robots, token)
+        assert is_allowed(rules, "/public")
+        assert not is_allowed(rules, "/private/x")
+
+
+def test_group_for_our_bot_replaces_the_star_group():
+    robots = "User-agent: *\nDisallow: /private\n\nUser-agent: IphonePriceRadar\nDisallow: /\n"
+    assert not is_allowed(parse_robots(robots, "IphonePriceRadar"), "/anything")
+    assert is_allowed(parse_robots(robots), "/anything")
+
+
+@pytest.mark.parametrize("agent_line", ["iphonepriceradar", "IPHONEPRICERADAR", "IphonePriceRadar/0.1"])
+def test_our_group_matches_case_insensitively_and_ignores_versions(agent_line):
+    rules = parse_robots(f"User-agent: *\nAllow: /\n\nUser-agent: {agent_line}\nDisallow: /x\n", "IphonePriceRadar/0.1")
+    assert not is_allowed(rules, "/x/1")
+    assert is_allowed(rules, "/y")
+
+
+def test_our_group_can_allow_more_than_the_star_group():
+    robots = "User-agent: *\nDisallow: /\n\nUser-agent: IphonePriceRadar\nAllow: /\n"
+    assert is_allowed(parse_robots(robots, "IphonePriceRadar"), "/item")
 
 
 def test_longest_match_wins_and_allow_wins_ties():

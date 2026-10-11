@@ -1,7 +1,7 @@
-"""robots.txt parsing and matching with Google-style wildcards.
+"""robots.txt parsing and matching (RFC 9309, with Google-style '*' and '$' wildcards).
 
-Only groups that apply to user-agent "*" are used. None of the target sites has a group for this crawler, and a
-group written for another bot never applies to us.
+If a robots.txt has groups addressed to the crawler's product token, those groups apply (matched case-insensitively,
+ignoring any version suffix); otherwise the groups for "*" apply. Groups written for other bots never apply.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ class Rule:
     pattern: str
 
 
-def parse_robots(text: str) -> list[Rule]:
-    """Return the Allow/Disallow rules of every group that applies to user-agent '*'."""
+def parse_robots(text: str, product_token: str = "") -> list[Rule]:
+    """Return the Allow/Disallow rules that apply to the crawler named by product_token."""
     groups: list[tuple[list[str], list[Rule]]] = []
     agents: list[str] = []
     rules: list[Rule] = []
@@ -33,12 +33,22 @@ def parse_robots(text: str) -> list[Rule]:
             if rules:
                 groups.append((agents, rules))
                 agents, rules = [], []
-            agents.append(value.lower())
+            agents.append(_agent_token(value))
         elif key in ("allow", "disallow") and agents:
             rules.append(Rule(allow=key == "allow", pattern=value))
     if agents:
         groups.append((agents, rules))
+
+    token = _agent_token(product_token)
+    own = [group_rules for group_agents, group_rules in groups if token and token in group_agents]
+    if own:
+        return [rule for group_rules in own for rule in group_rules]
     return [rule for group_agents, group_rules in groups if "*" in group_agents for rule in group_rules]
+
+
+def _agent_token(value: str) -> str:
+    """'IphonePriceRadar/0.1' and 'iphonepriceradar' name the same product token."""
+    return value.split("/", 1)[0].strip().lower()
 
 
 @lru_cache(maxsize=2048)
