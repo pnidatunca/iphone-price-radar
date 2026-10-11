@@ -32,13 +32,15 @@ class FakeTime:
         self.now += seconds
 
 
-def make_client(routes, **policy):
-    """routes maps "path?query" to a response, or to a list of responses consumed in order."""
+def make_client(routes, latency=0.0, **policy):
+    """routes maps "path?query" to a response, or to a list of responses consumed in order.
+    latency is how many (fake) seconds every response takes."""
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         key = request.url.raw_path.decode()
         calls.append((key, request.headers["User-Agent"]))
+        fake.now += latency
         value = routes[key]
         return value.pop(0) if isinstance(value, list) else value
 
@@ -83,6 +85,17 @@ def test_requests_are_spaced_and_identified():
     assert len(fake.sleeps) == 2
     assert all(2.0 <= s <= 3.5 for s in fake.sleeps)
     assert {ua for _, ua in calls} == {"TestBot/1.0 (+https://example.org)"}
+
+
+def test_gap_starts_after_the_response_ends():
+    client, _, fake = make_client(
+        {"/robots.txt": ROBOTS, "/a": httpx.Response(200), "/b": httpx.Response(200)}, latency=7.0
+    )
+    client.get(f"{BASE}/a")
+    client.get(f"{BASE}/b")
+    # Every response takes 7 s, yet each new request still waits 2-3.5 s after the previous response finished.
+    assert len(fake.sleeps) == 2
+    assert all(2.0 <= s <= 3.5 for s in fake.sleeps)
 
 
 def test_budget_includes_robots_and_stops_the_source():

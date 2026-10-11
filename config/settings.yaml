@@ -4,8 +4,10 @@ crawler:
   # Honest identity (decision K5): project name and a link to the notice for site owners in the README.
   # robots.txt groups addressed to the product token "IphonePriceRadar" are honoured.
   user_agent: "IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar#for-site-owners)"
-  delay_seconds: [2.0, 3.5]      # random gap between two requests to the same site
-  max_requests_per_source: 1500  # per run (~70 minutes at 2.75 s per request)
+  delay_seconds: [2.0, 3.5]      # random gap after each response before the next request to the same site
+  # Per run. Phase 0 measured 6-9 s per response, so with the gap 1,500 requests take about 3.5-5 hours;
+  # a full Getmobil run needs about 805 requests (about 2-2.7 hours).
+  max_requests_per_source: 1500
   max_consecutive_errors: 10     # the source is stopped for the run after this many errors in a row
   max_retry_after_seconds: 60    # a longer Retry-After stops the source for the run instead of waiting
   timeout_seconds: 25

@@ -3,7 +3,7 @@
 The crawling policy is enforced here, so an adapter cannot bypass it:
 
 * one client per site, strictly sequential requests;
-* a random gap (default 2.0-3.5 s) between two requests;
+* a random gap (default 2.0-3.5 s) between the end of one response and the next request;
 * robots.txt is honoured, including groups addressed to the crawler's product token: a disallowed URL raises
   ``RobotsDisallowed`` without sending a request;
 * a per-run request budget;
@@ -159,13 +159,15 @@ class PoliteClient:
                 raise BudgetExhausted(self.stopped_reason)
             self._wait_turn()
             self.requests_made += 1
-            self._last_request_at = self._clock()
+            response: httpx.Response | None = None
             try:
                 response = self._http.get(url)
             except httpx.HTTPError as err:
                 failure = f"{type(err).__name__} for {url}"
                 self._extra_wait = DEFAULT_RETRY_WAIT
-            else:
+            # The gap is measured from the end of the response, so a slow server never gets back-to-back requests.
+            self._last_request_at = self._clock()
+            if response is not None:
                 if is_challenge(response):
                     self._stop(f"bot challenge or HTTP {response.status_code} at {url}")
                 if response.status_code not in RETRYABLE_STATUS:
