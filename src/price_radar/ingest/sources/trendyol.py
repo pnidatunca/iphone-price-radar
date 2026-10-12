@@ -1,24 +1,36 @@
-"""Trendyol adapter: product discovery from the refurbished-Apple category, offers from the product pages.
+"""Trendyol adapter: product discovery from two iPhone categories, offers from the product pages.
+
+Trendyol is the project's only source of new iPhones as well as a source of refurbished ones (decision of
+12 October 2026), so it emits offers for both; the product page decides which a product is.
 
 Trendyol's mobile web pages carry their data in server-rendered state blocks, ``<script>window["<name>"]={...}``,
-written as strict JSON. The category page has ``window["__single-search-result__PROPS"]`` (``data.total``,
-``data.pageIndex`` and 36 product cards a page), the product page ``window["__envoy-mobile__SHARED_PROPS"]``
-(``product`` with its attributes and ``merchantListing``). They are internal blocks of the site's front end, not an
-API, and can change with any deploy, so every parser checks that the block is there and holds what it needs, and
-raises ParseError with the reason otherwise.
+written as strict JSON. A category page has ``window["__single-search-result__PROPS"]`` (``data.total``,
+``data.pageIndex`` and 36 cards a page), the product page ``window["__envoy-mobile__SHARED_PROPS"]`` (``product`` with
+its attributes and ``merchantListing``). They are internal blocks of the site's front end, not an API, and can change
+with any deploy, so every parser checks that the block is there and holds what it needs, and raises ParseError with the
+reason otherwise.
 
-Discovery. ``/apple-yenilenmis-cep-telefonu-x-b101470-c109461`` lists the refurbished Apple phones. Page 1 is the bare
-path (the form measured in Phase 0), page N is ``?pi=N``; reading stops when ``N * 36 >= data.total`` or a page has no
-products. The ranking drifts while the pages are read (a card can appear twice, another not at all), so cards are
-deduplicated by content id and the distinct count is compared with ``data.total``; a gap is reported, not repaired.
-Cards only give content ids: a card URL carries ``boutiqueId`` and ``merchantId``, which are dropped (the product page
-lists every merchant), and the card's category is not trusted (refurbished products are sometimes filed under "IOS Cep
-Telefonları"). Cards whose title names a model outside the scope are not requested (decision K21).
+Discovery. Two categories are read, each from its bare path (page 1, the form measured in Phase 0) and then
+``?pi=N`` until ``N * 36 >= data.total`` or a page has no products: the refurbished Apple phones
+(``/apple-yenilenmis-cep-telefonu-x-b101470-c109461``) and the iPhone category
+(``/iphone-ios-cep-telefonlari-x-c164462``: new phones and some misfiled refurbished ones). Sponsored cards are
+skipped, and so are cards of brands other than Apple (cases, batteries, screen protectors). The cards of both categories
+are deduplicated by content id in one set, so a product listed in both is requested once. The ranking drifts while the
+pages are read, and on the iPhone category sponsored cards seem to take the place of listed products, so the distinct
+organic cards of each category are compared with its ``data.total``; a gap is reported, not repaired. A card URL
+carries ``boutiqueId`` and ``merchantId``, which are dropped (the product page lists every merchant). Cards whose title
+names a model outside the scope are not requested (decision K21).
+
+Classification. A product counts as refurbished when its web category is the refurbished one (109461), its warranty
+type says "Yenilenmiş", or its title says "Yenilenmiş" or carries an A/B/C "Kalite" grade; anything else is new. The
+card's category is not trusted: it decides nothing.
 
 Offers. The product page names the winning (buybox) merchant in ``merchantListing.merchant`` and ``winnerVariant`` and
-every other merchant in ``merchantListing.otherMerchants``, each with its own price and listing id. An offer is
-emitted only when its variant has ``inStock`` true and ``stockStatus`` 1: out-of-stock pages still show a price. No
-quantity is shown (``runningOutQuantity`` is often 0 for available items), so ``stock_qty`` stays None.
+the other merchants in ``merchantListing.otherMerchants``, each with its own price and listing id. An offer is emitted
+only when its variant has ``inStock`` true and ``stockStatus`` 1: out-of-stock pages still show a price. No quantity is
+shown (``runningOutQuantity`` is often 0 for available items), so ``stock_qty`` stays None. A page has been seen to
+embed at most 12 other merchants (``OTHER_MERCHANTS_SHOWN``), next to a "TÜM SATICILARI GÖSTER" link to ``/saticilar``,
+which robots.txt disallows; a page with that many is reported as possibly cut.
 
 Price rule (owner's decision). ``price_tl`` is what a buyer pays today: ``discountedPrice``, the selling price minus
 the basket promotion Trendyol applies automatically (a percentage, a fixed amount or both). ``list_price_tl`` is the
@@ -27,13 +39,13 @@ sticker price (``sellingPrice``) and ``promo_pct`` the resulting discount in per
 
 Attributes. Model and storage come from the product attributes ("Cep Telefonu Modeli", "Dahili Hafıza"), with the
 title as fallback. Colour comes from the title, which names it ("Yıldız Işığı") where the "Renk" attribute is a coarse
-web colour ("Beyaz"), with the attribute as fallback. Condition is the "Kozmetik Durum" attribute, else the title grade
-("A Kalite", "Outlet C Kalite"); when the two disagree, ``condition_flags`` holds ``condition_conflict``. Trendyol shows
-no SIM type and no battery health; the warranty is the "Garanti Tipi" attribute.
-
-Refurbished check. A product counts as refurbished when its web category is the refurbished one (109461), its
-warranty type says "Yenilenmiş", or its title says "Yenilenmiş" or carries an A/B/C grade. Anything else is a new
-phone: it is skipped and counted.
+web colour ("Beyaz"), with the attribute as fallback. The condition of a new product is "Sıfır"; a new product with a
+grade in its title ("A Grade") or a "Kozmetik Durum" gets ``condition_conflict`` and a warning. The condition of a
+refurbished product is the "Kozmetik Durum" attribute, else the title grade ("A Kalite", "Outlet C Kalite"); when the
+two disagree, ``condition_flags`` holds ``condition_conflict``. The warranty is the raw "Garanti Tipi" attribute: for
+new phones it separates Apple Türkiye from importer warranties, which price very differently, so an empty value on a
+new product is a warning and the values seen are counted in the run summary; normalising them is left to Phase 1.
+Trendyol shows no SIM type and no battery health.
 
 Privacy (K12, K22). The merchant block holds the seller's display name, legal name, tax number and office,
 registration number, registered e-mail address and address. A merchant is reduced to its numeric id and a few
@@ -42,6 +54,7 @@ non-personal flags; nothing else of it is copied.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import re
@@ -72,20 +85,28 @@ from price_radar.ingest.schemas import CENTS, RawOffer, error_summary
 log = logging.getLogger(__name__)
 
 SOURCE = "trendyol"
-PARSER_VERSION = "trendyol-1"
+PARSER_VERSION = "trendyol-2"
 HOST = "www.trendyol.com"
 BASE_URL = f"https://{HOST}"
-CATEGORY_PATH = "/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+REFURBISHED = "refurbished"
+NEW = "new"
+# The categories read, in this order. A product is filed under the category whose listing showed it first.
+CATEGORY_PATHS = {
+    REFURBISHED: "/apple-yenilenmis-cep-telefonu-x-b101470-c109461",  # "Apple Yenilenmiş Cep Telefonu"
+    NEW: "/iphone-ios-cep-telefonlari-x-c164462",  # "iPhone IOS Cep Telefonları"
+}
 REFURBISHED_CATEGORY = 109461  # web category "Yenilenmiş Cep Telefonu"
 PAGE_SIZE = 36
-MAX_LISTING_PAGES = 100  # 3,600 products, about four times the 843 of Phase 0; a larger data.total is not followed
+MAX_LISTING_PAGES = 100  # 3,600 cards a category, about four times the 843 of Phase 0; a larger total is not followed
+OTHER_MERCHANTS_SHOWN = 12  # the most other merchants a product page was seen to embed (13 sellers in all)
+NEW_CONDITION = "Sıfır"
 LISTING_STATE = "__single-search-result__PROPS"
 PRODUCT_STATE = "__envoy-mobile__SHARED_PROPS"
 _PRODUCT_PATH = rf"/apple/{urls.SLUG}-p-\d+"
 # Only these two forms are ever requested. Per-model listings (whose ?pi= robots.txt disallows), /saticilar, /sr,
 # sorting (sst=), search (?q=) and the apigw API links in the page data all fall outside them.
 URL_FORMS = (
-    urls.UrlForm("listing", re.compile(re.escape(CATEGORY_PATH)), ("pi",)),
+    urls.UrlForm("listing", re.compile("(?:" + "|".join(map(re.escape, CATEGORY_PATHS.values())) + ")"), ("pi",)),
     urls.UrlForm("product", re.compile(_PRODUCT_PATH)),
 )
 # The link that opens one merchant's offer, as the site's own "other sellers" links do. Built, never requested.
@@ -101,8 +122,9 @@ CONDITION_ATTRIBUTE = "Kozmetik Durum"
 WARRANTY_ATTRIBUTE = "Garanti Tipi"
 WARRANTY_PERIOD_ATTRIBUTE = "Garanti Süresi"
 # Patterns on folded text (normalize.fold: lower case, no diacritics).
-REFURBISHED_WORD = re.compile(r"yenilenmis")
-TITLE_GRADE = re.compile(r"\b(?:(?P<outlet>outlet) )?(?P<grade>[abc]) (?:kalite|grade)\b")
+REFURBISHED_WORD = re.compile(r"yenilenmis")  # "Yenilenmiş"
+REFURBISHED_TITLE = re.compile(r"yenilenmis|\b[abc] kalite\b")  # the refurbished check: "Yenilenmiş", "A Kalite"
+TITLE_GRADE = re.compile(r"\b(?:(?P<outlet>outlet) )?(?P<grade>[abc]) (?:kalite|grade)\b")  # any grade in a title
 ATTRIBUTE_GRADE = re.compile(r"(?P<grade>[abc]) seviye\b")
 GRADE_WORDS = (("cok iyi", "B"), ("mukemmel", "A"), ("iyi", "C"))  # "Çok İyi" before "İyi"
 CONDITION_CONFLICT = "condition_conflict"
@@ -138,12 +160,13 @@ class ParseError(ValueError):
 
 @dataclass(frozen=True)
 class ListingCard:
-    """A product card of the category listing. ``url`` is the bare product URL; ``title`` is used only to skip
-    out-of-scope models before their page is requested."""
+    """A product card of a category listing. ``url`` is the bare product URL; ``title`` is used only to skip
+    out-of-scope models before their page is requested; ``category`` is the listing that showed it first."""
 
     content_id: int
     url: str
     title: str
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,8 +174,10 @@ class ListingPage:
     total: int
     page_index: int | None
     records: int  # entries of data.products, whatever they are
-    cards: tuple[ListingCard, ...]
-    ads: int = 0  # sponsored and other non-product cards; they are not part of data.total
+    organic: tuple[int, ...]  # ids of every non-sponsored card, whatever its brand: what data.total counts
+    cards: tuple[ListingCard, ...]  # the Apple cards with an allowed URL
+    ads: int = 0  # sponsored and other non-product cards
+    not_apple: int = 0  # cards of other brands (accessories)
     refused: tuple[tuple[str, str], ...] = ()  # (url from the page, reason) for cards whose URL is not allowed
     skipped: tuple[str, ...] = ()
 
@@ -161,18 +186,25 @@ class ListingPage:
 class ProductPage:
     content_id: int
     model: str
-    refurbished: tuple[str, ...]  # why it counts as refurbished: "category", "warranty", "title"; empty for new phones
+    refurbished: tuple[str, ...]  # why it counts as refurbished: "category", "warranty", "title"; empty for new ones
     in_stock: bool  # at least one merchant has it in stock
     offers: tuple[RawOffer, ...]
+    warranty: str | None = None  # the raw "Garanti Tipi"
     out_of_stock: int = 0  # merchants listed without stock
     condition_conflict: bool = False
+    seller_list_at_cap: bool = False  # as many other merchants as a page was seen to show: the list may be cut
     rejected: tuple[str, ...] = ()  # offers that failed validation, with the reason
     warnings: tuple[str, ...] = ()
+
+    @property
+    def kind(self) -> str:
+        return REFURBISHED if self.refurbished else NEW
 
 
 @dataclass(frozen=True)
 class Condition:
-    """``raw`` is the attribute value, or the title grade written as "<grade> Kalite" when there is no attribute."""
+    """``raw`` is "Sıfır" for a new product; for a refurbished one the attribute value, or the title grade written as
+    "<grade> Kalite" when there is no attribute."""
 
     raw: str
     attribute: str | None
@@ -193,8 +225,9 @@ def check_url(url: str) -> str:
     return urls.check(url, HOST, URL_FORMS)
 
 
-def listing_url(page: int) -> str:
-    url = f"{BASE_URL}{CATEGORY_PATH}" + (f"?pi={page}" if page > 1 else "")
+def listing_url(category: str, page: int) -> str:
+    """Page ``page`` of a category (``REFURBISHED`` or ``NEW``): the bare path for page 1, ``?pi=N`` after it."""
+    url = f"{BASE_URL}{CATEGORY_PATHS[category]}" + (f"?pi={page}" if page > 1 else "")
     check_url(url)
     return url
 
@@ -243,10 +276,11 @@ def parse_listing_page(html: str) -> ListingPage:
         raise ParseError("listing data without a valid total or products list")
     if total == 0:
         raise ParseError("the listing reports no products (data.total is 0)")
+    organic: list[int] = []
     cards: list[ListingCard] = []
     refused: list[tuple[str, str]] = []
     skipped: list[str] = []
-    ads = 0
+    ads = not_apple = 0
     for record in products:
         if not isinstance(record, dict):
             skipped.append("listing card that is not an object")
@@ -255,6 +289,11 @@ def parse_listing_page(html: str) -> ListingPage:
             ads += 1
             continue
         content_id, path = as_int(record.get("id")), record.get("url")
+        if content_id is not None:
+            organic.append(content_id)
+        if record.get("brand") != "Apple":
+            not_apple += 1
+            continue
         if content_id is None or not isinstance(path, str):
             skipped.append("listing card without an id or url")
             continue
@@ -268,12 +307,21 @@ def parse_listing_page(html: str) -> ListingPage:
             continue
         cards.append(ListingCard(content_id, url, clean_text(record.get("name"))))
     return ListingPage(
-        total, as_int(data.get("pageIndex")), len(products), tuple(cards), ads, tuple(refused), tuple(skipped)
+        total,
+        as_int(data.get("pageIndex")),
+        len(products),
+        tuple(organic),
+        tuple(cards),
+        ads,
+        not_apple,
+        tuple(refused),
+        tuple(skipped),
     )
 
 
 def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_date: date) -> ProductPage:
-    """Offers of one product page: the buybox merchant plus every other merchant that has it in stock.
+    """Offers of one product page, new or refurbished: the buybox merchant plus every other merchant that has it in
+    stock.
 
     ``url`` is the page's final URL (after redirects); without its query it becomes the product URL of the offers.
     """
@@ -294,10 +342,27 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
     if all(_price(seller.variant, key) is None for seller in sellers for key in ("sellingPrice", "discountedPrice")):
         raise ParseError(f"no prices on the page of product {content_id}")
     refurbished = refurbished_reasons(product, attrs, title)
+    warranty = attrs.get(WARRANTY_ATTRIBUTE) or None
+    if not refurbished and warranty is None:
+        warnings.append("new product without a Garanti Tipi")
+    others = sum(not seller.is_buybox for seller in sellers)
+    at_cap = others >= OTHER_MERCHANTS_SHOWN
+    if at_cap:
+        warnings.append(f"{others} other merchants listed, as many as a page was seen to show: the list may be cut")
     available = [seller for seller in sellers if _in_stock(seller.variant)]
     out_of_stock = len(sellers) - len(available)
-    if not refurbished or not available:
-        return ProductPage(content_id, model, refurbished, bool(available), (), out_of_stock, warnings=tuple(warnings))
+    if not available:
+        return ProductPage(
+            content_id,
+            model,
+            refurbished,
+            False,
+            (),
+            warranty,
+            out_of_stock,
+            seller_list_at_cap=at_cap,
+            warnings=tuple(warnings),
+        )
 
     product_page = url.split("?", 1)[0]
     if _form(product_page) != "product":
@@ -307,16 +372,21 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
         warnings.append(f"storage attribute says {storage} GB, the title {title_storage} GB")
     colour_attribute = clean_text(attrs.get(COLOUR_ATTRIBUTE))
     colour = color_in_text(title) or canonical_color(colour_attribute) or colour_attribute
-    condition = condition_of(attrs, title)
+    condition = condition_of(attrs, title, new=not refurbished)
     if storage is None or not colour or condition is None:
         raise ParseError(f"product {content_id} has no readable storage, colour or condition")
+    if condition.conflict and not refurbished:
+        warnings.append(
+            f"product classified as new has a grade (title {condition.title_grade!r},"
+            f" Kozmetik Durum {condition.attribute!r})"
+        )
     build = _OfferBuilder(
         content_id=content_id,
         model=model,
         storage=storage,
         color=colour,
         condition=condition,
-        warranty=clean_text(attrs.get(WARRANTY_ATTRIBUTE)) or None,
+        warranty=warranty,
         product_url=product_page,
         product=_product_payload(product, attrs, title, condition, refurbished),
         fetched_at=fetched_at,
@@ -336,8 +406,10 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
         refurbished,
         True,
         tuple(build.offers),
+        warranty,
         out_of_stock,
         condition.conflict,
+        at_cap,
         tuple(build.rejected),
         tuple(warnings),
     )
@@ -355,23 +427,26 @@ def attributes(product: dict[str, Any]) -> dict[str, str]:
 
 
 def refurbished_reasons(product: dict[str, Any], attrs: dict[str, str], title: str) -> tuple[str, ...]:
+    """Why a product counts as refurbished; an empty tuple means it is new."""
     reasons = []
     category = product.get("webCategory")
     if isinstance(category, dict) and as_int(category.get("id")) == REFURBISHED_CATEGORY:
         reasons.append("category")
     if REFURBISHED_WORD.search(fold(attrs.get(WARRANTY_ATTRIBUTE, ""))):
         reasons.append("warranty")
-    folded = fold(title)
-    if REFURBISHED_WORD.search(folded) or TITLE_GRADE.search(folded):
+    if REFURBISHED_TITLE.search(fold(title)):
         reasons.append("title")
     return tuple(reasons)
 
 
-def condition_of(attrs: dict[str, str], title: str) -> Condition | None:
-    """The cosmetic condition from the "Kozmetik Durum" attribute and the grade in the title, or None if neither."""
+def condition_of(attrs: dict[str, str], title: str, *, new: bool = False) -> Condition | None:
+    """The condition of a product. New: "Sıfır", in conflict when the page shows a grade anyway. Refurbished: the
+    "Kozmetik Durum" attribute or the grade in the title, None if neither."""
     attribute = attrs.get(CONDITION_ATTRIBUTE) or None
     match = TITLE_GRADE.search(fold(title))
     title_grade = f"{'Outlet ' if match['outlet'] else ''}{match['grade'].upper()}" if match else None
+    if new:
+        return Condition(NEW_CONDITION, attribute, title_grade, bool(attribute or title_grade))
     if attribute is None and title_grade is None:
         return None
     letter = attribute_grade(attribute)
@@ -453,9 +528,9 @@ class _OfferBuilder:
 
 
 def crawl(ctx: CrawlContext) -> Iterator[RawOffer]:
-    """Read the category listing, then yield the offers of each in-scope product page it lists.
+    """Read both category listings, then yield the offers of each in-scope product page they list.
 
-    The listing is read in one pass before any product page, so the pages are read close together (less drift).
+    The listings are read in one pass before any product page, so their pages are read close together (less drift).
     """
     cards = _discover(ctx)
     fetched = 0
@@ -472,51 +547,73 @@ def crawl(ctx: CrawlContext) -> Iterator[RawOffer]:
 
 
 def _discover(ctx: CrawlContext) -> dict[int, ListingCard]:
-    """Distinct cards of the category listing by content id, in listing order."""
+    """Distinct Apple cards of both categories by content id, in listing order, each with the category that showed
+    it first."""
     found: dict[int, ListingCard] = {}
+    categories = {category: _read_category(ctx, category, found) for category in CATEGORY_PATHS}
+    ctx.stats.discovery.update(categories=categories, products_seen=len(found))
+    ctx.stats.counters["variants_discovered"] += len(found)  # a Trendyol product is the counterpart of a variant
+    return found
+
+
+def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCard]) -> dict[str, Any]:
+    """Read one category's listing into ``found`` and return what the reading saw."""
+    organic: set[int] = set()
+    cards: dict[int, ListingCard] = {}
     totals: set[int] = set()
     total: int | None = None
-    number = failed = cards_seen = ads = 0
+    number = failed = organic_seen = ads = not_apple = 0
     more = True
     while more:
         number += 1
-        page = _fetch_listing(ctx, number)
+        page = _fetch_listing(ctx, category, number)
         if page is None:
             failed += 1
             more = total is not None and number * PAGE_SIZE < total  # without page 1 there is no total to go by
         else:
             total = page.total
             totals.add(total)
-            cards_seen += len(page.cards)
+            organic_seen += len(page.organic)
+            organic.update(page.organic)
             ads += page.ads
+            not_apple += page.not_apple
             for card in page.cards:
-                found.setdefault(card.content_id, card)
+                cards.setdefault(card.content_id, dataclasses.replace(card, category=category))
             more = page.records > 0 and number * PAGE_SIZE < total
         if more and number >= MAX_LISTING_PAGES:
-            ctx.stats.warn(f"listing: data.total is {total}; stopped after {MAX_LISTING_PAGES} pages")
+            ctx.stats.warn(f"{category} listing: data.total is {total}; stopped after {MAX_LISTING_PAGES} pages")
             break
-    distinct = len(found)
-    ctx.stats.discovery.update(
-        listing_totals=sorted(totals),
-        listing_pages=number,
-        listing_pages_failed=failed,
-        cards_seen=cards_seen,
-        duplicate_cards=cards_seen - distinct,
-        ads_skipped=ads,
-        products_seen=distinct,
-        missing=max(0, (total or 0) - distinct),
-    )
-    ctx.stats.counters["variants_discovered"] += distinct  # a Trendyol product is the counterpart of a variant
-    if total is not None and distinct != total:
+    listed_before = sum(1 for content_id in cards if content_id in found)
+    for content_id, card in cards.items():
+        found.setdefault(content_id, card)
+    ctx.stats.counters[f"{category}_products_discovered"] += len(cards) - listed_before
+    if not_apple:
+        ctx.stats.counters["cards_not_apple"] += not_apple
+    if listed_before:
+        ctx.stats.counters["products_in_both_listings"] += listed_before
+    if total is not None and len(organic) != total:
         ctx.stats.warn(
-            f"listing: data.total is {total} but {distinct} distinct products were listed ({cards_seen} cards,"
-            f" {failed} failed pages); failed pages and ranking drift leave products out"
+            f"{category} listing: data.total is {total} but {len(organic)} distinct cards were listed"
+            f" ({organic_seen} cards, {ads} sponsored, {failed} failed pages); failed pages, ranking drift and"
+            " sponsored cards leave products out"
         )
-    return found
+    return {
+        "listing_totals": sorted(totals),
+        "listing_pages": number,
+        "listing_pages_failed": failed,
+        "cards_seen": organic_seen,
+        "duplicate_cards": organic_seen - len(organic),
+        "distinct_cards": len(organic),
+        "missing": max(0, (total or 0) - len(organic)),
+        "ads_skipped": ads,
+        "not_apple_skipped": not_apple,
+        "products_seen": len(cards),
+        "listed_in_an_earlier_category": listed_before,
+    }
 
 
-def _fetch_listing(ctx: CrawlContext, number: int) -> ListingPage | None:
-    url = listing_url(number)
+def _fetch_listing(ctx: CrawlContext, category: str, number: int) -> ListingPage | None:
+    url = listing_url(category, number)
     response = ctx.get(url, "listing")
     if response is None:
         return None
@@ -538,12 +635,14 @@ def _fetch_listing(ctx: CrawlContext, number: int) -> ListingPage | None:
 
 
 def _product_offers(ctx: CrawlContext, card: ListingCard) -> Iterator[RawOffer]:
+    counters = ctx.stats.counters
+    counters[f"{card.category}_pages_requested"] += 1
     response = ctx.get(card.url, "product")
     if response is None:
         return
     if response.status_code in (404, 410):
         # The listing lags the product pages, so a listed product can already be gone.
-        ctx.stats.counters["products_removed"] += 1
+        counters["products_removed"] += 1
         ctx.stats.warn(f"product {card.content_id} answered HTTP {response.status_code} (removed)")
         return
     if response.status_code != 200:
@@ -551,7 +650,7 @@ def _product_offers(ctx: CrawlContext, card: ListingCard) -> Iterator[RawOffer]:
         return
     final_url = str(response.url)
     if _form(final_url.split("?", 1)[0]) != "product":
-        ctx.stats.counters["products_redirected_away"] += 1
+        counters["products_redirected_away"] += 1
         return
     try:
         page = parse_product_page(response.text, final_url, fetched_at=ctx.now(), snapshot_date=ctx.snapshot_date)
@@ -561,23 +660,31 @@ def _product_offers(ctx: CrawlContext, card: ListingCard) -> Iterator[RawOffer]:
     for warning in page.warnings:
         ctx.stats.warn(f"product {page.content_id}: {warning}")
     for reason in page.rejected:
-        ctx.stats.counters["offers_rejected"] += 1
+        counters["offers_rejected"] += 1
         ctx.stats.warn(f"rejected offer {reason}")
-    if not page.refurbished:
-        ctx.stats.counters["products_not_refurbished"] += 1
-        return
     if not ctx.scope.includes(page.model):
-        ctx.stats.counters["products_out_of_scope"] += 1
+        counters["products_out_of_scope"] += 1
         return
+    kind = page.kind
+    counters[f"{kind}_products"] += 1
+    if page.warranty is not None:
+        ctx.stats.observe(f"warranty_types_{kind}", page.warranty)
+    elif kind == NEW:
+        counters["new_without_warranty_type"] += 1
+    if card.category not in (None, kind):
+        counters[f"{kind}_in_{card.category}_listing"] += 1  # a misfiled product, by the product page
+    if kind == REFURBISHED and "category" not in page.refurbished:
+        counters["refurbished_outside_category"] += 1
+    if page.seller_list_at_cap:
+        counters["seller_lists_at_cap"] += 1
     if page.out_of_stock:
-        ctx.stats.counters["offers_out_of_stock"] += page.out_of_stock
+        counters["offers_out_of_stock"] += page.out_of_stock
     if not page.in_stock:
-        ctx.stats.counters["products_out_of_stock"] += 1
+        counters["products_out_of_stock"] += 1
         return
-    if "category" not in page.refurbished:
-        ctx.stats.counters["products_refurbished_outside_category"] += 1
     if page.condition_conflict:
-        ctx.stats.counters["condition_conflicts"] += 1
+        counters["condition_conflicts"] += 1
+    counters[f"{kind}_offers"] += len(page.offers)
     ctx.stats.sellers_per_variant[len(page.offers)] += 1
     yield from page.offers
 
@@ -634,6 +741,8 @@ def _product_payload(
         "content_id": product.get("id"),
         "product_group_id": product.get("productGroupId"),
         "title": title,
+        "classified_as": REFURBISHED if refurbished else NEW,
+        "refurbished_by": list(refurbished),
         "web_category_id": web_category.get("id"),
         "category_id": category.get("id"),
         "model_raw": attrs.get(MODEL_ATTRIBUTE),
@@ -644,7 +753,6 @@ def _product_payload(
         "title_grade": condition.title_grade,
         "warranty_type": attrs.get(WARRANTY_ATTRIBUTE),
         "warranty_period": attrs.get(WARRANTY_PERIOD_ATTRIBUTE),
-        "refurbished_by": list(refurbished),
     }
 
 

@@ -4,8 +4,9 @@
 
 Writes ``DIR/offers.jsonl`` (one RawOffer per line) and ``DIR/run_summary.json``; raw HTML is never written. With
 ``--summary-only`` no offers are written and the summary is also printed to stdout as Markdown, ready to be appended to
-a GitHub job summary. The summary holds counts, timings and error reasons only, no catalogue content, because job
-summaries of a public repository are public.
+a GitHub job summary. The summary holds counts, timings, error reasons and the values seen in a few vocabulary fields
+(``observed``: Trendyol's warranty types), no catalogue content, because job summaries of a public repository are
+public.
 
 Exit codes: 0 when the run ended normally (a spent request budget included), 1 when the site stopped the run (bot
 challenge, 401/403, too many errors, robots.txt unavailable) or the run crashed, 2 for a usage error. The summary is
@@ -196,6 +197,7 @@ def build_summary(
         "failures": {"count": stats.failure_count, "examples": stats.failures},
         "warnings": {"count": stats.warning_count, "examples": stats.warnings},
         "counters": dict(sorted(stats.counters.items())),
+        "observed": {name: dict(values.most_common()) for name, values in sorted(stats.observed.items())},
         "discovery": stats.discovery,
         "response_seconds": {
             "count": len(durations),

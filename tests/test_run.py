@@ -37,15 +37,19 @@ def easycep_site() -> FakeSite:
 
 
 def trendyol_site() -> FakeSite:
-    category = "/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+    refurbished = "/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+    new = "/iphone-ios-cep-telefonlari-x-c164462"
     routes = {
-        category: page("trendyol/listing_p1.html"),
-        f"{category}?pi=2": page("trendyol/listing_p2.html"),
+        refurbished: page("trendyol/refurbished_listing_p1.html"),
+        f"{refurbished}?pi=2": page("trendyol/refurbished_listing_p2.html"),
+        new: page("trendyol/new_listing_p1.html"),
+        f"{new}?pi=2": page("trendyol/new_listing_p2.html"),
         "/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101": page(
             "trendyol/product_buybox_others.html"
         ),
-        "/apple/iphone-12-mini-siyah-64gb-xyz1tu-a-ornek-outlet-c-kalite-p-900000105": page(
-            "trendyol/product_misfiled.html"
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104": page("trendyol/product_new_phone.html"),
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-ithalatci-garantili-p-900000108": page(
+            "trendyol/product_new_importer.html"
         ),
     }
     return FakeSite("https://www.trendyol.com", routes)
@@ -72,6 +76,7 @@ def test_cli_writes_offers_and_a_summary(tmp_path):
     assert summary["response_seconds"]["count"] == 9
     assert summary["snapshot_date"] == "2026-10-12"
     assert summary["counters"]["variants_removed"] == 1
+    assert summary["observed"] == {}  # only Trendyol counts values (warranty types)
 
 
 def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
@@ -85,27 +90,37 @@ def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
     assert "Example Store" not in markdown and "M-PIP" not in markdown
 
 
-def test_cli_collects_trendyol_offers_with_list_prices(tmp_path, capsys):
+def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
     assert cli(["--source", "trendyol", "--out", str(tmp_path), "--markdown"], trendyol_site()) == 0
     lines = (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
     offers = [RawOffer.model_validate_json(line) for line in lines]
-    assert [o.offer_key for o in offers] == [
+    assert [o.offer_key for o in offers][:5] == [
         "trendyol:900000101:7001",
         "trendyol:900000101:7002",
         "trendyol:900000101:7003",
-        "trendyol:900000105:7011",
+        "trendyol:900000104:7010",
+        "trendyol:900000104:7013",
     ]
+    assert len(offers) == 18  # 3 refurbished, 2 + 13 new
     assert all(o.list_price_tl >= o.price_tl and o.promo_pct is not None for o in offers)
     assert all('"list_price_tl":' in line and '"promo_pct":' in line for line in lines)
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
     assert (summary["source"], summary["parser_version"], summary["stop_reason"]) == (
         "trendyol",
-        "trendyol-1",
+        "trendyol-2",
         "completed",
     )
-    assert summary["pages_fetched"] == {"listing": 2, "product": 7}  # five of them answer 404 here
-    assert summary["counters"]["products_removed"] == 5
-    assert summary["discovery"]["products_seen"] == 36
+    assert summary["pages_fetched"] == {"listing": 4, "product": 10}  # seven of the product pages answer 404 here
+    counters = summary["counters"]
+    assert (counters["refurbished_products_discovered"], counters["new_products_discovered"]) == (35, 6)
+    assert (counters["refurbished_pages_requested"], counters["new_pages_requested"]) == (5, 5)
+    assert (counters["refurbished_offers"], counters["new_offers"]) == (3, 15)
+    assert "products_not_refurbished" not in counters
+    assert summary["observed"] == {
+        "warranty_types_new": {"Apple Türkiye Garantili": 1, "İthalatçı Garantili": 1},
+        "warranty_types_refurbished": {"Yenilenmiş Ürün (12 Ay Garanti)": 1},
+    }
+    assert summary["discovery"]["products_seen"] == 41
     markdown = capsys.readouterr().out
     assert markdown.startswith("### Collection run: trendyol")
     assert "Decoy Seller" not in markdown and "@example.com" not in markdown

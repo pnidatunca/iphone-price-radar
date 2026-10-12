@@ -51,6 +51,7 @@ class CrawlStats:
     warning_count: int = 0
     warnings: list[str] = field(default_factory=list)
     counters: Counter[str] = field(default_factory=Counter)
+    observed: dict[str, Counter[str]] = field(default_factory=dict)  # values seen in the run, e.g. warranty types
     discovery: dict[str, Any] = field(default_factory=dict)
     stop_reason: str | None = None
 
@@ -65,6 +66,10 @@ class CrawlStats:
         if len(self.failures) < MAX_EXAMPLES:
             self.failures.append({"kind": kind, "url": url, "error": error})
         log.warning("failed %s %s: %s", kind, url, error)
+
+    def observe(self, name: str, value: str) -> None:
+        """Count one occurrence of ``value`` under ``name``; the run summary lists every distinct value."""
+        self.observed.setdefault(name, Counter())[value] += 1
 
     def warn(self, message: str) -> None:
         self.warning_count += 1

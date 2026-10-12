@@ -47,6 +47,7 @@ TRENDYOL_PAGES = {
         "/apple/yenilenmis-iphone-14-pro-256-gb-derin-mor-ornek-urun-a-kalite-p-900000102"
     ),
     "product_misfiled.html": "/apple/iphone-12-mini-siyah-64gb-xyz1tu-a-ornek-outlet-c-kalite-p-900000105",
+    "product_new_importer.html": "/apple/iphone-15-ornek-urun-128-gb-siyah-ithalatci-garantili-p-900000108",
 }
 
 
@@ -97,7 +98,7 @@ def test_the_trendyol_fixtures_do_contain_names_and_legal_details():
 
 def test_parsed_offers_have_no_name_or_slug_fields_at_any_depth():
     offers = all_offers()
-    assert len(offers) == 16
+    assert len(offers) == 29
     assert {o.platform for o in offers} == {"getmobil", "easycep", "trendyol"}
     for offer in offers:
         record = json.loads(offer.model_dump_json())
