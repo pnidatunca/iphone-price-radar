@@ -1,7 +1,7 @@
 # Phase 0 feasibility summary
 
-**Date:** 11 October 2026, Trendyol updated 12 October 2026 · **Status:** source measurements complete; Phase 0 not
-finished (see [What is still open](#what-is-still-open)).
+**Date:** 11 October 2026, Trendyol and the scope updated 12 October 2026 · **Status:** source measurements
+complete; Phase 0 not finished (see [What is still open](#what-is-still-open)).
 
 This summarises the project's Turkish feasibility report, which is kept outside the repository like the raw evidence.
 Codes such as K21 refer to the project's decision log.
@@ -38,7 +38,7 @@ without trying to get past any protection.
 | n11, Hepsiburada | Marketplaces | Blocked with both identities | Dropped |
 | Getmobil | Refurbished marketplace, many sellers | Each variant page lists every seller with price and stock | **GO** |
 | Easycep | Refurbished retailer, single seller | One listing gives price, quantity, condition and battery range per SKU | **GO** |
-| Trendyol | Marketplace | The refurbished Apple phone category lists 843 products, 36 a page; each product page lists the winning seller and every other seller with price and listing id (up to 13 on a new phone, up to 5 on refurbished ones); no battery health, SIM type or stock quantity | **Conditional GO**: adapter written; joins the nightly run after the current 3-day trial (owner's decision) |
+| Trendyol | Marketplace | The refurbished Apple phone category lists 843 products and the iPhone category 151 (new phones and some misfiled refurbished ones), 36 cards a page; each product page lists the winning seller and the other sellers with price and listing id (up to 13 on a new phone, up to 5 on refurbished ones); no battery health, SIM type or stock quantity | **Conditional GO**: adapter written, refurbished and new phones; the only source of new iPhones; joins the nightly run after the current 3-day trial (owner's decision) |
 | TCMB | Central bank exchange rates | Daily and archive XML files | Used for USD/TRY |
 
 **Why the classifieds were dropped (K4):** their bot protection ignores the User-Agent and checks whether the client
@@ -76,11 +76,11 @@ price.
 | Getmobil | ~805: 1 brand page, 74 listing pages, 1 sitemap, 689 variant pages, ~40 re-checks of ids that left the listing (assumption) | ~2.3 h (range ~1.9–2.7 h) |
 | Easycep | 6 listing pages + 0–30 unit pages for new ids | ~1–6 min |
 | Easycep, once | 169 unit pages to read the flags of the current SKUs | ~25–30 min |
-| Trendyol | ~868: 24 listing pages + ~843 product pages + robots.txt | ~40 min–1.3 h (estimate from 2.7 s per request, n=26; to be measured on a full run) |
+| Trendyol | ~1,030: 24 + 5 listing pages + ~843 refurbished and up to ~151 new product pages + robots.txt | ~45 min–1.6 h (estimate from 2.7 s per request, n=26; to be measured on a full run) |
 | TCMB | 1 | — |
 
-- About 810–840 requests a day for Getmobil and Easycep, and about 870 more once Trendyol joins; every source stays
-  within its own 1,500-request budget. Getmobil gets a full pass every day and, since the sources run in parallel,
+- About 810–840 requests a day for Getmobil and Easycep, and about 1,030 more once Trendyol joins; every source
+  stays within its own 1,500-request budget. Getmobil gets a full pass every day and, since the sources run in parallel,
   sets the collection time.
 - Getmobil responses took 5.8–9.2 s (n=6). With the 2–3.5 s gap after each response, a request cycle is ~8.6–12.0 s,
   3.1–4.4 times the plan's 2.75 s. Getmobil uses ~54% of the 1,500-request per-source budget and fits the 6-hour
@@ -96,7 +96,8 @@ price.
 | Payload per offer | ~2 KB | ~0.4–0.5 KB (measured) |
 | Database after one year | ~200–250 MB | ~80–120 MB; ~235–265 MB in the upper scenario |
 
-Trendyol is not in these figures yet; it adds an estimated 2,100–2,600 offers a day (rough, from 9 product pages).
+Trendyol is not in these figures yet; its refurbished category adds an estimated 2,100–2,600 offers a day (rough,
+from 9 product pages), and the new phones an unmeasured number (the two archived new-phone pages had 2 and 13 offers).
 
 The upper scenario stores every payload every day at the upper offer count, which applies if the daily change rate
 (not measured yet) is high. Both stay under Neon's last known free storage of 0.5 GB. Whole pages are not stored:
@@ -124,6 +125,11 @@ Getmobil's RSC payload alone is 196–282 KB per page.
    percent are kept beside it. Trendyol shows no stock quantity, its card categories are unreliable (refurbished
    phones also appear under "IOS Cep Telefonları") and Getmobil's owner also sells there, so the sources are not
    independent.
+7. **New phones on Trendyol.** Their price depends heavily on the warranty type ("Garanti Tipi": Apple Türkiye or
+   importer warranty), so it is stored raw for every offer and the deal section for new phones is split by it;
+   otherwise importer-warranty phones would look like deals every day. The iPhone category shows 12 sponsored cards on
+   each full page; in the archive its 5 pages listed 103 distinct products against a `data.total` of 151 (48 = 12 × 4
+   fewer, no duplicates), so sponsored cards seem to take the place of listed products, which paging cannot reach.
 
 ## Crawling and privacy rules
 
@@ -149,11 +155,13 @@ What site owners need is in the README section [For site owners](../README.md#fo
 
 ## Scope (K21)
 
-iPhone X and newer are collected, including iPhone SE (2020) and SE (2022). iPhone 8 / 8 Plus and older, including the
-first SE, are not (`scope.excluded_models` in [`config/settings.yaml`](../config/settings.yaml)). On Getmobil this
-leaves out 5 models (iPhone 6, 7, 7 Plus, 8 and 8 Plus) with 15 variants and 5 listing pages, 20 requests a day. All of
-Easycep's stock is in scope, and so were the 231 Trendyol cards read on 12 October; a Trendyol card whose title names
-an older model is skipped before its product page is requested.
+iPhone X and newer are collected, including iPhone SE (2020) and SE (2022), refurbished and, since 12 October 2026,
+new; Trendyol is the only source of new phones, and refurbished and new offers get separate deal sections. iPhone 8 /
+8 Plus and older, including the first SE, are not (`scope.excluded_models` in
+[`config/settings.yaml`](../config/settings.yaml)). On Getmobil this leaves out 5 models (iPhone 6, 7, 7 Plus, 8 and
+8 Plus) with 15 variants and 5 listing pages, 20 requests a day. All of Easycep's stock is in scope, and so were the 231
+refurbished and 85 iPhone-category Apple cards Trendyol listed on 12 October; a Trendyol card whose title names an
+older model is skipped before its product page is requested.
 
 ## What is still open
 
@@ -174,7 +182,10 @@ an older model is skipped before its product page is requested.
   the 843 total and the page drift are only partly measured; how many refurbished phones are filed outside the
   category; whether the seller list has a cap above 13; whether listing ids stay stable from day to day; whether
   `?merchantId=` alone selects the seller (the site's own links add `boutiqueId` and `sav`); and how the site reacts to
-  about 870 requests a day.
+  about 1,030 requests a day. To be measured in the first full run with new phones: the real number of products and
+  offers in the iPhone category, the list of warranty types ("observed" in the run summary), the share of misfiled
+  refurbished phones, the most sellers on a new-phone page (12 other merchants on one page may be a cut list) and
+  whether the products hidden behind sponsored cards stay out of reach.
 - **Other:** a DagsHub account; a Power BI Desktop → Neon test (Power BI Desktop is not installed yet); Easycep's terms
   of use, which load only in a browser and are still unread; the meaning of Easycep's SKU flags; Getmobil's offer
   lifecycle (no variant page was fetched twice). Redirect targets are now checked against robots.txt before they are

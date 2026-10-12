@@ -1,8 +1,9 @@
 # iPhone Price Radar
 
-Daily price intelligence for refurbished iPhones sold in Turkey. The system collects offers from refurbished-device
-retailers every night, estimates the fair price of each device with an uncertainty interval, and flags offers priced
-clearly below the market.
+Daily price intelligence for iPhones sold in Turkey (iPhone X and newer), refurbished and new. The system collects
+offers from refurbished-device retailers and a marketplace every night, estimates the fair price of each device with an
+uncertainty interval, and flags offers priced clearly below the market, in separate deal sections for refurbished and
+new phones.
 
 **Status:** Phase 0 (feasibility), October 2026.
 
@@ -21,15 +22,15 @@ clearly below the market.
 |---|---|
 | Getmobil | Refurbished-device marketplace (multiple sellers) |
 | Easycep | Refurbished-device retailer (unit-level listings) |
-| Trendyol | General marketplace, refurbished Apple phone category (multiple sellers per product); joins the nightly run after the current 3-day trial |
+| Trendyol | General marketplace (multiple sellers per product): the refurbished Apple phone category and the iPhone category; the only source of new iPhones; joins the nightly run after the current 3-day trial |
 | TCMB | Official daily USD/TRY rates, used to normalise prices |
 
 ## Data collection policy
 
 - Only public product and category pages are requested; paths disallowed by `robots.txt` are never requested.
-- Each source requests only a fixed list of URL forms. On Trendyol these are the refurbished Apple phone category
-  (`?pi=` pages) and bare product pages; sorting, search, seller pages, per-model listings and internal APIs are
-  refused in code.
+- Each source requests only a fixed list of URL forms. On Trendyol these are two category listings (refurbished Apple
+  phones and iPhones, with `?pi=` pages) and bare product pages; sorting, filters, search, seller pages, per-model
+  listings and internal APIs are refused in code.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
 - The crawler identifies itself honestly; its User-Agent links to the [notice for site owners](#for-site-owners).
 - No personal data is collected.
