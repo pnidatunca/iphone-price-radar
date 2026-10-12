@@ -36,6 +36,21 @@ def easycep_site() -> FakeSite:
     return FakeSite("https://easycep.com", routes)
 
 
+def trendyol_site() -> FakeSite:
+    category = "/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+    routes = {
+        category: page("trendyol/listing_p1.html"),
+        f"{category}?pi=2": page("trendyol/listing_p2.html"),
+        "/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101": page(
+            "trendyol/product_buybox_others.html"
+        ),
+        "/apple/iphone-12-mini-siyah-64gb-xyz1tu-a-ornek-outlet-c-kalite-p-900000105": page(
+            "trendyol/product_misfiled.html"
+        ),
+    }
+    return FakeSite("https://www.trendyol.com", routes)
+
+
 def cli(args: list[str], site: FakeSite) -> int:
     return run.main(args, transport=site.transport(), sleep=lambda seconds: None, now=lambda: NOW)
 
@@ -68,6 +83,32 @@ def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
     assert "| Offers | 3 (3 in stock) |" in markdown
     assert "| Requests | 6 of 40 |" in markdown
     assert "Example Store" not in markdown and "M-PIP" not in markdown
+
+
+def test_cli_collects_trendyol_offers_with_list_prices(tmp_path, capsys):
+    assert cli(["--source", "trendyol", "--out", str(tmp_path), "--markdown"], trendyol_site()) == 0
+    lines = (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
+    offers = [RawOffer.model_validate_json(line) for line in lines]
+    assert [o.offer_key for o in offers] == [
+        "trendyol:900000101:7001",
+        "trendyol:900000101:7002",
+        "trendyol:900000101:7003",
+        "trendyol:900000105:7011",
+    ]
+    assert all(o.list_price_tl >= o.price_tl and o.promo_pct is not None for o in offers)
+    assert all('"list_price_tl":' in line and '"promo_pct":' in line for line in lines)
+    summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
+    assert (summary["source"], summary["parser_version"], summary["stop_reason"]) == (
+        "trendyol",
+        "trendyol-1",
+        "completed",
+    )
+    assert summary["pages_fetched"] == {"listing": 2, "product": 7}  # five of them answer 404 here
+    assert summary["counters"]["products_removed"] == 5
+    assert summary["discovery"]["products_seen"] == 36
+    markdown = capsys.readouterr().out
+    assert markdown.startswith("### Collection run: trendyol")
+    assert "Decoy Seller" not in markdown and "@example.com" not in markdown
 
 
 def test_known_ids_skip_their_unit_pages(tmp_path):

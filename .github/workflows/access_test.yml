@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: Source to test
+        description: Source to test ("both" is Getmobil and Easycep)
         type: choice
-        options: [getmobil, easycep, both]
+        options: [getmobil, easycep, trendyol, both]
         default: both
       max_requests:
         description: Request budget per source, robots.txt included

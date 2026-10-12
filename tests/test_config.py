@@ -6,7 +6,7 @@ def test_settings_file_is_valid():
     assert settings.crawler.user_agent.startswith("IphonePriceRadar/")
     assert "github.com/pnidatunca/iphone-price-radar#for-site-owners" in settings.crawler.user_agent
     assert "@" not in settings.crawler.user_agent  # no e-mail address in the identity (decision K5)
-    assert set(settings.sources) >= {"getmobil", "easycep"}
+    assert set(settings.sources) >= {"getmobil", "easycep", "trendyol"}
     assert settings.crawler.delay_seconds == (2.0, 3.5)
 
 

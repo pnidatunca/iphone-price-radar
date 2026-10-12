@@ -32,11 +32,11 @@ import httpx
 from price_radar.config import load_settings
 from price_radar.ingest.crawl import CrawlContext, CrawlStats, utc_now
 from price_radar.ingest.http_client import BudgetExhausted, CrawlStopped, PoliteClient
-from price_radar.ingest.sources import easycep, getmobil
+from price_radar.ingest.sources import easycep, getmobil, trendyol
 
 log = logging.getLogger(__name__)
 
-SOURCES = {"getmobil": getmobil, "easycep": easycep}
+SOURCES = {"getmobil": getmobil, "easycep": easycep, "trendyol": trendyol}
 MARKDOWN_EXAMPLES = 5
 
 
@@ -53,7 +53,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--max-variants",
         type=_positive_int,
-        help="at most this many variant pages (Getmobil) or unit pages (Easycep)",
+        help="at most this many variant pages (Getmobil), unit pages (Easycep) or product pages (Trendyol)",
     )
     parser.add_argument(
         "--known-ids",

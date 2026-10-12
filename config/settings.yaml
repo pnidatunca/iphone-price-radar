@@ -35,6 +35,10 @@ sources:
   easycep:
     enabled: true
     base_url: "https://easycep.com"
+  trendyol:
+    # Collected by the CLI and the access test; joins the nightly trial-crawl run after the current 3-day trial.
+    enabled: true
+    base_url: "https://www.trendyol.com"
 
 retention:
   detail_days: 90
