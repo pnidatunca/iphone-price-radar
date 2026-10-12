@@ -42,7 +42,9 @@ jobs:
           status=0
           for source in $sources; do
             # The output directory lives in the runner's temp space and disappears with the job.
+            # tee: the summary goes to the job summary and to the log, where it can be read from the command line.
             uv run python -m price_radar.ingest.run --source "$source" --max-requests "$MAX_REQUESTS" \
-              --out "$RUNNER_TEMP/access-test/$source" --summary-only >> "$GITHUB_STEP_SUMMARY" || status=1
+              --out "$RUNNER_TEMP/access-test/$source" --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+            if [ "${PIPESTATUS[0]}" -ne 0 ]; then status=1; fi
           done
           exit "$status"

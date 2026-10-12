@@ -1,0 +1,66 @@
+name: trial-crawl
+
+# Phase 0 trial crawl (decisions K13 and K19): one full run per source per day. Offers go straight to Neon's
+# raw.landing table; nothing is uploaded as an artifact and the job summary holds counts and timings only.
+
+on:
+  schedule:
+    - cron: "17 0 * * *"   # 03:17 Turkey time (UTC+3); minute 17 avoids the top-of-the-hour queue
+  workflow_dispatch:
+    inputs:
+      max_requests:
+        description: Request budget per source, robots.txt included
+        type: number
+        default: 1500
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trial-crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [getmobil, easycep]
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      SOURCE: ${{ matrix.source }}
+      MAX_REQUESTS: ${{ inputs.max_requests || 1500 }}
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.source }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Known Easycep ids
+        if: matrix.source == 'easycep'
+        # Without the list the crawl simply reads every unit page again, so a database hiccup must not stop it.
+        continue-on-error: true
+        run: uv run python -m price_radar.storage.landing known-ids --out "$RUNNER_TEMP/known-ids.txt"
+      - name: Crawl
+        id: crawl
+        run: |
+          args=(--source "$SOURCE" --max-requests "$MAX_REQUESTS" --out "$RUNNER_TEMP/run" --markdown)
+          if [ -f "$RUNNER_TEMP/known-ids.txt" ]; then args+=(--known-ids "$RUNNER_TEMP/known-ids.txt"); fi
+          set +e
+          uv run python -m price_radar.ingest.run "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - name: Load into Neon
+        # Also after a failed crawl: the summary (and any offers collected before the stop) is still worth keeping.
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.crawl.outputs.exit_code }}
+        run: |
+          if [ ! -f "$RUNNER_TEMP/run/run_summary.json" ]; then echo "no run summary, nothing to load"; exit 0; fi
+          args=(--run-dir "$RUNNER_TEMP/run" --run-id "$RUN_ID")
+          if [ -n "$EXIT_CODE" ]; then args+=(--exit-code "$EXIT_CODE"); fi
+          uv run python -m price_radar.storage.landing load "${args[@]}"

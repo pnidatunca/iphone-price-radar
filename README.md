@@ -83,3 +83,6 @@ uv run python -m price_radar.ingest.run --source easycep --out data/runs/easycep
 
 The manual `access-test` workflow runs the same command on GitHub Actions with `--summary-only`; it keeps no data
 and writes only counts and timings to the job summary.
+
+The `trial-crawl` workflow (Phase 0) runs every night at 03:17 Turkey time: one full run per source, loaded into the
+`raw.landing` table in Neon with `python -m price_radar.storage.landing load`. Nothing is uploaded as an artifact.

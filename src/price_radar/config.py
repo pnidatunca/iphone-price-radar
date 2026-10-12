@@ -12,6 +12,7 @@ from price_radar.ingest.http_client import CrawlPolicy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = REPO_ROOT / "config" / "settings.yaml"
+ENV_FILE = REPO_ROOT / ".env"
 
 
 class CrawlerSettings(BaseModel):
@@ -60,6 +61,16 @@ def load_settings(path: Path = SETTINGS_PATH) -> Settings:
         return Settings.model_validate(yaml.safe_load(f))
 
 
-def database_url() -> str | None:
-    """Neon connection string; it only ever comes from the environment, never from the settings file."""
-    return os.environ.get("NEON_DATABASE_URL") or None
+def database_url(env_file: Path = ENV_FILE) -> str | None:
+    """Neon connection string from the environment (GitHub Actions secret). For local runs a NEON_DATABASE_URL line
+    in the repository's .env file is the fallback. It never comes from the settings file."""
+    value = os.environ.get("NEON_DATABASE_URL")
+    if value:
+        return value
+    if not env_file.exists():
+        return None
+    for raw in env_file.read_text(encoding="utf-8-sig").splitlines():
+        key, sep, rest = raw.strip().partition("=")
+        if sep and key.strip() == "NEON_DATABASE_URL":
+            return rest.strip().strip("\"'") or None
+    return None

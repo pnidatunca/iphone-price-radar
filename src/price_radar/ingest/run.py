@@ -62,6 +62,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--out", type=Path, required=True, help="output directory")
     parser.add_argument("--summary-only", action="store_true", help="write no offers; print the summary as Markdown")
+    parser.add_argument("--markdown", action="store_true", help="also print the summary as Markdown (counts only)")
     args = parser.parse_args(argv)
     if args.known_ids is not None and args.source != "easycep":
         parser.error("--known-ids applies to --source easycep only")
@@ -146,8 +147,8 @@ def main(
         stats.in_stock_offers,
         summary["stop_reason"],
     )
-    if args.summary_only:
-        sys.stdout.write(summary_markdown(summary))
+    if args.summary_only or args.markdown:
+        sys.stdout.write(summary_markdown(summary, "Access test" if args.summary_only else "Collection run"))
     return 1 if failed else 0
 
 
@@ -207,6 +208,7 @@ def build_summary(
             "max_variants": args.max_variants,
             "known_ids": str(args.known_ids) if args.known_ids else None,
             "summary_only": args.summary_only,
+            "markdown": args.markdown,
         },
     }
 
@@ -219,7 +221,7 @@ def percentile(sorted_values: list[float], share: float) -> float | None:
     return sorted_values[rank - 1]
 
 
-def summary_markdown(summary: dict[str, Any]) -> str:
+def summary_markdown(summary: dict[str, Any], title: str = "Access test") -> str:
     """The run summary as a short Markdown section with counts only."""
     times = summary["response_seconds"]
     timing = (
@@ -244,7 +246,7 @@ def summary_markdown(summary: dict[str, Any]) -> str:
     ]
     if summary["counters"]:
         rows.append(("Counters", _pairs(summary["counters"])))
-    lines = [f"### Access test: {summary['source']}", "", "| | |", "|---|---|"]
+    lines = [f"### {title}: {summary['source']}", "", "| | |", "|---|---|"]
     lines += [f"| {name} | {_cell(value)} |" for name, value in rows]
     for title, key, field in (("Failures", "failures", "error"), ("Refusals", "refusals", "reason")):
         examples = summary[key]["examples"][:MARKDOWN_EXAMPLES]
