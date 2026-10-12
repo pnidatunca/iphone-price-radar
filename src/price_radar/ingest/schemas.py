@@ -4,6 +4,11 @@ Phase 0 changed the plan's field list: no site has a per-offer battery health an
 are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}`` or ``easycep:{id}``; and the record carries the
 numeric seller id, the stock quantity, the SIM type, the SKU and its condition flags.
 
+Price: ``price_tl`` is what a buyer pays today. A site that shows a sticker price and takes an automatic basket
+promotion off it at checkout also fills two optional fields: ``list_price_tl`` (the sticker price) and ``promo_pct``
+(the promotion in percent of the sticker price). Where the shown price is the price paid (Getmobil, Easycep), both
+stay None.
+
 Privacy (K12): the record has no field for a seller's display name, slug or store link, and the validator rejects a
 payload that carries one, so an adapter cannot store them by accident. Sellers are identified by their numeric id;
 ``offer_url`` is the link that opens the offer of exactly that seller, so a reader can still go and buy it.
@@ -28,6 +33,7 @@ PLATFORM_HOSTS = {"getmobil": "getmobil.com", "easycep": "easycep.com"}
 STORAGE_VALUES_GB = frozenset({16, 32, 64, 128, 256, 512, 1024, 2048})
 MAX_PRICE_TL = Decimal("1000000")  # sanity bound: a larger value is a parsing error (e.g. kuruş read as lira)
 CENTS = Decimal("0.01")
+PROMO_TOLERANCE = Decimal("0.01")  # promo_pct is rounded to two decimals
 # Fields whose change means the offer itself changed. Volatile payload details (seller score, delivery days,
 # popularity counters) stay out of the hash, so "store the payload only when the hash changes" (plan 7.4) still saves
 # space.
@@ -48,6 +54,9 @@ HASHED_FIELDS = (
     "stock_qty",
     "in_stock",
 )
+# Optional fields added after offers were first stored. They enter the hash only when set, so the hash of an offer
+# without them is unchanged. promo_pct is left out because it follows from price_tl and list_price_tl.
+OPTIONAL_HASHED_FIELDS = ("list_price_tl",)
 FORBIDDEN_KEY = re.compile(
     r"name|slug|(vendor|seller|store)_?title|store_?(link|url)|address|phone_?(number|no)|telephone|e_?mail"
     r"|tax_?(number|no|id|office)|kep",
@@ -81,6 +90,8 @@ class RawOffer(BaseModel):
     seller_id: int | None = Field(default=None, gt=0)
     is_buybox: bool
     price_tl: Decimal = Field(gt=0, le=MAX_PRICE_TL)
+    list_price_tl: Decimal | None = Field(default=None, gt=0, le=MAX_PRICE_TL)
+    promo_pct: Decimal | None = Field(default=None, ge=0, lt=100)
     stock_qty: int | None = Field(default=None, ge=0)
     in_stock: bool
     product_url: str
@@ -104,10 +115,10 @@ class RawOffer(BaseModel):
             raise ValueError(f"{value} GB is not an iPhone storage size")
         return value
 
-    @field_validator("price_tl")
+    @field_validator("price_tl", "list_price_tl", "promo_pct")
     @classmethod
-    def _to_cents(cls, value: Decimal) -> Decimal:
-        return value.quantize(CENTS)
+    def _to_cents(cls, value: Decimal | None) -> Decimal | None:
+        return None if value is None else value.quantize(CENTS)
 
     @field_validator("payload")
     @classmethod
@@ -124,12 +135,26 @@ class RawOffer(BaseModel):
             parts = urlsplit(getattr(self, field))
             if parts.scheme != "https" or parts.hostname != PLATFORM_HOSTS[self.platform]:
                 raise ValueError(f"{field} must be an https URL on {PLATFORM_HOSTS[self.platform]}")
+        self._check_list_price()
         expected = payload_hash(self)
         if self.payload_hash and self.payload_hash != expected:
             raise ValueError("payload_hash does not match the offer fields")
         # The model is frozen; the hash is derived once, here, so it can never disagree with the fields.
         object.__setattr__(self, "payload_hash", expected)
         return self
+
+    def _check_list_price(self) -> None:
+        """The price paid is at most the sticker price, and the promotion percent agrees with the two."""
+        if self.list_price_tl is None:
+            if self.promo_pct is not None:
+                raise ValueError("promo_pct needs list_price_tl")
+            return
+        if self.price_tl > self.list_price_tl:
+            raise ValueError("price_tl must not exceed list_price_tl")
+        if self.promo_pct is not None:
+            expected = (self.list_price_tl - self.price_tl) / self.list_price_tl * 100
+            if abs(expected - self.promo_pct) > PROMO_TOLERANCE:
+                raise ValueError(f"promo_pct {self.promo_pct} does not match the prices ({expected:.2f})")
 
 
 def error_summary(err: Exception) -> str:
@@ -140,8 +165,10 @@ def error_summary(err: Exception) -> str:
 
 
 def payload_hash(offer: RawOffer) -> str:
-    """SHA-256 over the offer fields that matter for change detection (``HASHED_FIELDS``)."""
+    """SHA-256 over the offer fields that matter for change detection: ``HASHED_FIELDS`` and the
+    ``OPTIONAL_HASHED_FIELDS`` that are set."""
     stable = {name: getattr(offer, name) for name in HASHED_FIELDS}
+    stable |= {name: getattr(offer, name) for name in OPTIONAL_HASHED_FIELDS if getattr(offer, name) is not None}
     text = json.dumps(stable, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

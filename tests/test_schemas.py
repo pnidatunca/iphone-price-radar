@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -5,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from price_radar.ingest.normalize import as_decimal, as_int, canonical_model, storage_gb
-from price_radar.ingest.schemas import RawOffer
+from price_radar.ingest.schemas import HASHED_FIELDS, RawOffer
 
 
 def offer(**changes) -> dict:
@@ -114,6 +116,53 @@ def test_offers_are_immutable():
     record = RawOffer(**offer())
     with pytest.raises(ValidationError):
         record.price_tl = Decimal("1")
+
+
+def test_list_price_and_promotion_are_optional():
+    record = RawOffer(**offer())
+    assert (record.list_price_tl, record.promo_pct) == (None, None)
+    promoted = RawOffer(**offer(price_tl="23740.5", list_price_tl="24990", promo_pct="5"))
+    assert (promoted.price_tl, promoted.list_price_tl, promoted.promo_pct) == (
+        Decimal("23740.50"),
+        Decimal("24990.00"),
+        Decimal("5.00"),
+    )
+    assert RawOffer.model_validate_json(promoted.model_dump_json()) == promoted
+
+
+def test_a_fixed_amount_promotion_is_a_percentage_with_two_decimals():
+    record = RawOffer(**offer(price_tl="11874.05", list_price_tl="12999", promo_pct="8.65"))
+    assert record.promo_pct == Decimal("8.65")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"list_price_tl": "24000"},  # the price paid is above the sticker price
+        {"promo_pct": "0"},  # a promotion without a sticker price
+        {"list_price_tl": "26000", "promo_pct": "5"},  # 24990 is 3.88% below 26000, not 5%
+        {"price_tl": "23740.5", "list_price_tl": "24990", "promo_pct": "-5"},
+        {"price_tl": "1", "list_price_tl": "24990", "promo_pct": "100"},
+        {"list_price_tl": "0"},
+        {"list_price_tl": "1000001"},
+    ],
+)
+def test_inconsistent_list_prices_are_rejected(changes):
+    with pytest.raises(ValidationError):
+        RawOffer(**offer(**changes))
+
+
+def test_an_offer_without_a_list_price_hashes_as_before_the_field_existed():
+    record = RawOffer(**offer())
+    stable = {name: getattr(record, name) for name in HASHED_FIELDS}
+    text = json.dumps(stable, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
+    assert record.payload_hash == hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_a_new_sticker_price_changes_the_hash():
+    base = RawOffer(**offer(price_tl="23740.5", list_price_tl="24990"))
+    assert RawOffer(**offer(price_tl="23740.5", list_price_tl="25490")).payload_hash != base.payload_hash
+    assert RawOffer(**offer(price_tl="23740.5")).payload_hash != base.payload_hash
 
 
 @pytest.mark.parametrize(
