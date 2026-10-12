@@ -6,7 +6,16 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from price_radar.ingest.normalize import as_decimal, as_int, canonical_model, storage_gb
+from price_radar.ingest.normalize import (
+    as_decimal,
+    as_int,
+    canonical_color,
+    canonical_model,
+    color_in_text,
+    model_in_text,
+    storage_gb,
+    storage_in_text,
+)
 from price_radar.ingest.schemas import HASHED_FIELDS, RawOffer
 
 
@@ -211,3 +220,60 @@ def test_numbers_from_page_data():
     assert as_int("12") == 12 and as_int(True) is None and as_int("1.5") is None
     assert as_decimal("106999.00") == Decimal("106999.00") and as_decimal(36749.15) == Decimal("36749.15")
     assert as_decimal("NaN") is None and as_decimal(None) is None and as_decimal("abc") is None
+
+
+@pytest.mark.parametrize(
+    ("title", "model", "storage"),
+    [
+        ("Yenilenmiş iPhone 13 128 GB Mavi Cep Telefonu (12 Ay Garantili) - A Kalite", "iPhone 13", 128),
+        ("Yenilenmiş iPhone 13 Pro Max 256 GB Grafit - B Kalite", "iPhone 13 Pro Max", 256),
+        ("iPhone 12 Mini 64GB Siyah - Outlet C Kalite", "iPhone 12 mini", 64),
+        ("iPhone13 Pembe 128GB XYZ1TU/A", "iPhone 13", 128),
+        ("Yenilenmiş iPhone SE (2. Nesil) 64 GB Beyaz", "iPhone SE (2020)", 64),
+        ("Yenilenmiş iPhone XS Max 512 GB Altın", "iPhone XS Max", 512),
+        ("Yenilenmiş iPhone 16e 128 GB Beyaz 12 Ay Garantili A Grade", "iPhone 16e", 128),
+        ("iPhone 12 5G 4 GB RAM 256 GB Mor", "iPhone 12", 256),
+        ("Yenilenmiş iPhone 15 Pro 1 TB Siyah Titanyum", "iPhone 15 Pro", 1024),
+        ("Yenilenmiş 15 Pro 128 GB Uyumlu Cep Telefonu", None, 128),
+        ("Yenilenmiş iPhone SE 64 GB", None, 64),
+        ("Telefon Kılıfı", None, None),
+    ],
+)
+def test_model_and_storage_are_found_in_titles(title, model, storage):
+    assert model_in_text(title) == model
+    assert storage_in_text(title) == storage
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Mavi", "Mavi"),
+        ("MAVİ", "Mavi"),
+        ("sari", "Sarı"),
+        ("Naturel Titanyum", "Natürel Titanyum"),
+        ("YILDIZ IŞIĞI", "Yıldız Işığı"),
+        ("Black", "Siyah"),
+        ("Space Gray", "Uzay Grisi"),
+        ("Glacier", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_colour_names_get_one_spelling(raw, expected):
+    assert canonical_color(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Yenilenmiş iPhone 13 128 GB Yıldız Işığı Cep Telefonu (12 Ay Garantili) - A Kalite", "Yıldız Işığı"),
+        ("Yenilenmiş iPhone 15 Pro 256 GB Mavi Titanyum - A Kalite", "Mavi Titanyum"),
+        ("iPhone 13 Gece Yarısı 128GB XYZ1TU/A - Outlet C Kalite", "Gece Yarısı"),
+        ("Yenilenmiş iPhone 11 64 GB Pamuk Beyazı", "Pamuk Beyazı"),
+        ("Yenilenmiş iPhone 12 64 GB Starlight", "Yıldız Işığı"),
+        ("Yenilenmiş iPhone 17 Pro 256 GB A Kalite", None),
+        ("Yenilenmiş iPhone 16 128 GB Glacier", None),
+    ],
+)
+def test_colours_are_found_in_titles(title, expected):
+    assert color_in_text(title) == expected
