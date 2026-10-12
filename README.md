@@ -42,8 +42,9 @@ IphonePriceRadar/<version> (+https://github.com/pnidatunca/iphone-price-radar#fo
 
 - It runs once a day, sends one request at a time with 2–3.5 seconds between requests, and follows `robots.txt`,
   including groups addressed to `IphonePriceRadar`. `robots.txt` is read again on every run.
-- It reads public product and category pages only and stores prices and product attributes (model, storage,
-  condition, battery health, seller). It does not collect personal data.
+- It reads public product and category pages only and stores prices, stock and product attributes (model, storage,
+  colour, condition, battery range where the page shows one) with the seller's numeric id. It does not store seller
+  names, store links or any other personal data.
 - It does not republish your catalogue: only aggregated statistics and model outputs are shown, with links back to
   your product pages.
 
@@ -73,3 +74,12 @@ uv run ruff check .   # lint
 
 Configuration lives in `config/settings.yaml`. Secrets (database URL, tokens) are read from environment variables;
 copy `.env.example` to `.env` for local runs.
+
+One collection run of one source writes `offers.jsonl` and `run_summary.json` (`data/` is not committed):
+
+```bash
+uv run python -m price_radar.ingest.run --source easycep --out data/runs/easycep --max-requests 40
+```
+
+The manual `access-test` workflow runs the same command on GitHub Actions with `--summary-only`; it keeps no data
+and writes only counts and timings to the job summary.

@@ -1,0 +1,48 @@
+name: access-test
+
+# Manual access test from GitHub Actions: does the site answer the crawler's honest identity from a GitHub IP, how
+# long do responses take, and do the parsers still read the pages? The job writes only a Markdown summary of counts
+# and timings to the job summary. It uploads no artifacts and keeps no raw data (decisions K12 and K19).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Source to test
+        type: choice
+        options: [getmobil, easycep, both]
+        default: both
+      max_requests:
+        description: Request budget per source, robots.txt included
+        type: number
+        default: 40
+
+permissions:
+  contents: read
+
+concurrency:
+  group: access-test
+  cancel-in-progress: false
+
+jobs:
+  access-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run the access test
+        env:
+          SOURCE: ${{ inputs.source }}
+          MAX_REQUESTS: ${{ inputs.max_requests }}
+        run: |
+          if [ "$SOURCE" = "both" ]; then sources="getmobil easycep"; else sources="$SOURCE"; fi
+          status=0
+          for source in $sources; do
+            # The output directory lives in the runner's temp space and disappears with the job.
+            uv run python -m price_radar.ingest.run --source "$source" --max-requests "$MAX_REQUESTS" \
+              --out "$RUNNER_TEMP/access-test/$source" --summary-only >> "$GITHUB_STEP_SUMMARY" || status=1
+          done
+          exit "$status"

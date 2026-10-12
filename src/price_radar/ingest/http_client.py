@@ -5,11 +5,14 @@ The crawling policy is enforced here, so an adapter cannot bypass it:
 * one client per site, strictly sequential requests;
 * a random gap (default 2.0-3.5 s) between the end of one response and the next request;
 * robots.txt is honoured, including groups addressed to the crawler's product token: a disallowed URL raises
-  ``RobotsDisallowed`` without sending a request;
+  ``RobotsDisallowed`` without sending a request, and so does a redirect to a disallowed URL;
+* redirects are followed one policed hop at a time and never to another site;
 * a per-run request budget;
 * 429 and 5xx responses are retried once, honouring ``Retry-After`` up to a limit;
 * a bot challenge, a 401/403, a ``Retry-After`` above the limit, an unavailable robots.txt or too many consecutive
   errors stop the source for the rest of the run.
+
+The duration of every response is kept in ``response_seconds`` for the run summary.
 """
 
 from __future__ import annotations
@@ -33,6 +36,8 @@ CHALLENGE_MARKERS = (
     "Attention Required! | Cloudflare",
 )
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+MAX_REDIRECTS = 3
 DEFAULT_RETRY_WAIT = 10.0
 
 
@@ -46,6 +51,10 @@ class BudgetExhausted(CrawlStopped):
 
 class RobotsDisallowed(Exception):
     """robots.txt disallows the URL; no request was sent."""
+
+
+class RedirectRefused(Exception):
+    """A redirect pointed to another site or there were too many hops; the target was not requested."""
 
 
 class FetchFailed(Exception):
@@ -98,7 +107,7 @@ class PoliteClient:
         self._http = httpx.Client(
             headers={"User-Agent": policy.user_agent, "Accept-Language": "tr-TR,tr;q=0.9"},
             timeout=policy.timeout_seconds,
-            follow_redirects=True,
+            follow_redirects=False,  # redirects are followed in get(), one policed request per hop
             transport=transport,
         )
         self._rules: list[Rule] | None = None
@@ -106,6 +115,7 @@ class PoliteClient:
         self._extra_wait = 0.0
         self._consecutive_errors = 0
         self.requests_made = 0
+        self.response_seconds: list[float] = []  # one entry per response received, retries and robots.txt included
         self.stopped_reason: str | None = None
 
     def __enter__(self) -> PoliteClient:
@@ -120,15 +130,32 @@ class PoliteClient:
     def get(self, url: str) -> httpx.Response:
         """GET a URL on this site.
 
-        Any status that is not a bot challenge is returned as is (callers decide what a 404 means).
-        Raises RobotsDisallowed, FetchFailed or CrawlStopped (BudgetExhausted is a CrawlStopped).
+        Any status that is not a bot challenge is returned as is (callers decide what a 404 means). Redirects are
+        followed here rather than by httpx, so every hop gets the gap, counts against the budget and is checked against
+        robots.txt before it is requested; the returned response carries the earlier hops in ``history``.
+        Raises RobotsDisallowed, RedirectRefused, FetchFailed or CrawlStopped (BudgetExhausted is a CrawlStopped).
         """
         self._ensure_running()
         if urlsplit(url).hostname != self.host:
             raise ValueError(f"{url} is not on {self.host}")
         if not self.allowed(url):
             raise RobotsDisallowed(url)
-        return self._fetch(url)
+        history: list[httpx.Response] = []
+        while True:
+            response = self._fetch(url)
+            location = response.headers.get("Location")
+            if response.status_code not in REDIRECT_STATUS or not location:
+                response.history = history
+                return response
+            history.append(response)
+            target = str(response.url.join(location))
+            if len(history) > MAX_REDIRECTS:
+                raise RedirectRefused(f"more than {MAX_REDIRECTS} redirects, last target {target}")
+            if urlsplit(target).hostname != self.host:
+                raise RedirectRefused(f"{url} redirects to another site: {target}")
+            if not self.allowed(target):
+                raise RobotsDisallowed(target)
+            url = target
 
     def allowed(self, url: str) -> bool:
         """robots.txt decision for a URL on this site; robots.txt is fetched once per client."""
@@ -160,6 +187,7 @@ class PoliteClient:
             self._wait_turn()
             self.requests_made += 1
             response: httpx.Response | None = None
+            started = self._clock()
             try:
                 response = self._http.get(url)
             except httpx.HTTPError as err:
@@ -168,6 +196,7 @@ class PoliteClient:
             # The gap is measured from the end of the response, so a slow server never gets back-to-back requests.
             self._last_request_at = self._clock()
             if response is not None:
+                self.response_seconds.append(self._last_request_at - started)
                 if is_challenge(response):
                     self._stop(f"bot challenge or HTTP {response.status_code} at {url}")
                 if response.status_code not in RETRYABLE_STATUS:
