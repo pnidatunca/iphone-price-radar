@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlsplit
 
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
-POSITIVE_INT = re.compile(r"[1-9][0-9]{0,5}")
+POSITIVE_INT = re.compile(r"[1-9][0-9]{0,9}")  # page numbers and seller ids (Trendyol merchant ids have 7 digits)
 
 
 class UrlNotAllowed(ValueError):

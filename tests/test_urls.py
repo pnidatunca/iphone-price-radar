@@ -1,6 +1,6 @@
 import pytest
 
-from price_radar.ingest.sources import easycep, getmobil
+from price_radar.ingest.sources import easycep, getmobil, trendyol
 from price_radar.ingest.urls import UrlNotAllowed
 
 CATALOG = "https://getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
@@ -126,3 +126,63 @@ def test_easycep_builders_only_produce_allowed_urls():
     assert easycep.unit_url("/apple-iphone-13-128-gb-mavi-cep-telefonu-700001") == unit
     with pytest.raises(UrlNotAllowed):
         easycep.unit_url("/kategori/apple-2?page=2&orderby=1")
+
+
+TY = "https://www.trendyol.com"
+TY_CATEGORY = f"{TY}/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+TY_PRODUCT = f"{TY}/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101"
+
+
+@pytest.mark.parametrize(
+    ("url", "form"),
+    [
+        (TY_CATEGORY, "listing"),
+        (f"{TY_CATEGORY}?pi=2", "listing"),
+        (f"{TY_CATEGORY}?pi=24", "listing"),
+        (TY_PRODUCT, "product"),
+        (f"{TY}/apple/iphone-13-pembe-128gb-xyz1tu-a-ornek-a-kalite-p-1200000001", "product"),
+    ],
+)
+def test_trendyol_allows_its_page_forms(url, form):
+    assert trendyol.check_url(url) == form
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"{TY_CATEGORY}?sst=PRICE_BY_ASC",
+        f"{TY_CATEGORY}?pi=2&sst=PRICE_BY_ASC",
+        f"{TY_CATEGORY}?q=iphone",
+        f"{TY_CATEGORY}?pi=0",
+        f"{TY_CATEGORY}/",
+        f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v613184?pi=2",  # per-model listing: robots.txt disallows ?pi=
+        f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v613184",
+        f"{TY}/iphone-ios-cep-telefonlari-x-c164462",
+        f"{TY_PRODUCT}/saticilar",
+        f"{TY_PRODUCT}/yorumlar",
+        f"{TY_PRODUCT}?boutiqueId=7&merchantId=7001",
+        f"{TY_PRODUCT}?merchantId=7001",  # an offer link is built, never requested
+        f"{TY}/sr?q=iphone",
+        f"{TY}/sr?mid=7001",
+        f"{TY}/ornek-aksesuar/iphone-13-uyumlu-kilif-p-900000191",
+        f"{TY}/magaza/ornek-magaza-m-7001",
+        "https://apigw.trendyol.com/discovery-sfint-search-service/api/search/products/?pi=1&pageSize=36",
+        "https://trendyol.com/apple-yenilenmis-cep-telefonu-x-b101470-c109461",
+        "http://www.trendyol.com/apple-yenilenmis-cep-telefonu-x-b101470-c109461",
+    ],
+)
+def test_trendyol_refuses_sorting_search_seller_pages_api_and_unknown_urls(url):
+    with pytest.raises(UrlNotAllowed):
+        trendyol.check_url(url)
+
+
+def test_trendyol_builders_only_produce_allowed_urls():
+    assert trendyol.listing_url(1) == TY_CATEGORY  # page 1 is the bare path
+    assert trendyol.listing_url(3) == f"{TY_CATEGORY}?pi=3"
+    card_path = "/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101?boutiqueId=7&merchantId=7001"
+    assert trendyol.product_url(card_path) == TY_PRODUCT
+    assert trendyol.product_url(f"{TY_PRODUCT}#yorumlar") == TY_PRODUCT
+    assert trendyol.offer_url(TY_PRODUCT, 1234567) == f"{TY_PRODUCT}?merchantId=1234567"  # 7-digit merchant ids
+    for path in ("/apple/ornek-urun-p-900000101/saticilar", "/ornek-aksesuar/kilif-p-900000191", "/sr?q=iphone"):
+        with pytest.raises(UrlNotAllowed):
+            trendyol.product_url(path)

@@ -1,16 +1,18 @@
 """The raw offer record every source adapter produces (plan section 7.4, updated by the Phase 0 findings).
 
 Phase 0 changed the plan's field list: no site has a per-offer battery health and the warranty is constant, so both
-are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}`` or ``easycep:{id}``; and the record carries the
-numeric seller id, the stock quantity, the SIM type, the SKU and its condition flags.
+are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}``, ``easycep:{id}`` or
+``trendyol:{content_id}:{merchant_id}``; and the record carries the numeric seller id, the stock quantity, the SIM
+type, the SKU and its condition flags.
 
 Price: ``price_tl`` is what a buyer pays today. A site that shows a sticker price and takes an automatic basket
 promotion off it at checkout also fills two optional fields: ``list_price_tl`` (the sticker price) and ``promo_pct``
 (the promotion in percent of the sticker price). Where the shown price is the price paid (Getmobil, Easycep), both
 stay None.
 
-Privacy (K12): the record has no field for a seller's display name, slug or store link, and the validator rejects a
-payload that carries one, so an adapter cannot store them by accident. Sellers are identified by their numeric id;
+Privacy (K12, K22): the record has no field for a seller's display name, slug, store link or legal details (legal
+name, tax number, registration number, e-mail, address), and the validator rejects a payload that carries one, so an
+adapter cannot store them by accident. Sellers are identified by their numeric id;
 ``offer_url`` is the link that opens the offer of exactly that seller, so a reader can still go and buy it.
 """
 
@@ -26,10 +28,10 @@ from urllib.parse import urlsplit
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-Platform = Literal["getmobil", "easycep"]
+Platform = Literal["getmobil", "easycep", "trendyol"]
 SimType = Literal["physical", "esim"]
 
-PLATFORM_HOSTS = {"getmobil": "getmobil.com", "easycep": "easycep.com"}
+PLATFORM_HOSTS = {"getmobil": "getmobil.com", "easycep": "easycep.com", "trendyol": "www.trendyol.com"}
 STORAGE_VALUES_GB = frozenset({16, 32, 64, 128, 256, 512, 1024, 2048})
 MAX_PRICE_TL = Decimal("1000000")  # sanity bound: a larger value is a parsing error (e.g. kuruş read as lira)
 CENTS = Decimal("0.01")
@@ -59,17 +61,17 @@ HASHED_FIELDS = (
 OPTIONAL_HASHED_FIELDS = ("list_price_tl",)
 FORBIDDEN_KEY = re.compile(
     r"name|slug|(vendor|seller|store)_?title|store_?(link|url)|address|phone_?(number|no)|telephone|e_?mail"
-    r"|tax_?(number|no|id|office)|kep",
+    r"|tax_?(number|no|id|office)|registration_?(number|no)|mersis|kep",
     re.IGNORECASE,
 )
-FORBIDDEN_VALUE = re.compile(r"/magazalarimiz/", re.IGNORECASE)
+FORBIDDEN_VALUE = re.compile(r"/magazalarimiz/|/magaza/", re.IGNORECASE)  # Getmobil and Trendyol store links
 
 
 class RawOffer(BaseModel):
     """One offer as seen on one day. ``model`` is the canonical name (see ``normalize.canonical_model``).
 
     ``sim_type`` and the SKU fields are None or empty when the page that carries them was not read in this run
-    (Easycep shows them only on unit pages, which are fetched once per id).
+    (Easycep shows them only on unit pages, which are fetched once per id) or the site does not show them (Trendyol).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
