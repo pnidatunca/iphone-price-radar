@@ -21,14 +21,20 @@ clearly below the market.
 |---|---|
 | Getmobil | Refurbished-device marketplace (multiple sellers) |
 | Easycep | Refurbished-device retailer (unit-level listings) |
+| Trendyol | General marketplace, refurbished Apple phone category (multiple sellers per product); joins the nightly run after the current 3-day trial |
 | TCMB | Official daily USD/TRY rates, used to normalise prices |
 
 ## Data collection policy
 
 - Only public product and category pages are requested; paths disallowed by `robots.txt` are never requested.
+- Each source requests only a fixed list of URL forms. On Trendyol these are the refurbished Apple phone category
+  (`?pi=` pages) and bare product pages; sorting, search, seller pages, per-model listings and internal APIs are
+  refused in code.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
 - The crawler identifies itself honestly; its User-Agent links to the [notice for site owners](#for-site-owners).
 - No personal data is collected.
+- The price stored is what a buyer pays today. Where a marketplace takes an automatic basket promotion off at checkout
+  (Trendyol), the sticker price and the promotion percent are kept as well; per-user coupons are ignored.
 - Raw catalogue data (images, descriptions, product lists) is not republished. Only aggregated analyses and model
   outputs are shown, with links to the original product pages.
 
@@ -44,7 +50,8 @@ IphonePriceRadar/<version> (+https://github.com/pnidatunca/iphone-price-radar#fo
   including groups addressed to `IphonePriceRadar`. `robots.txt` is read again on every run.
 - It reads public product and category pages only and stores prices, stock and product attributes (model, storage,
   colour, condition, battery range where the page shows one) with the seller's numeric id. It does not store seller
-  names, store links or any other personal data.
+  names, store links, legal details (official names, tax and registration numbers, e-mail addresses, addresses) or
+  any other personal data.
 - It does not republish your catalogue: only aggregated statistics and model outputs are shown, with links back to
   your product pages.
 
@@ -86,3 +93,4 @@ and writes only counts and timings to the job summary.
 
 The `trial-crawl` workflow (Phase 0) runs every night at 03:17 Turkey time: one full run per source, loaded into the
 `raw.landing` table in Neon with `python -m price_radar.storage.landing load`. Nothing is uploaded as an artifact.
+It covers Getmobil and Easycep; Trendyol (`--source trendyol`) joins it after the current 3-day trial.

@@ -1,7 +1,7 @@
 # Phase 0 feasibility summary
 
-**Date:** 11 October 2026 · **Status:** source measurements complete; Phase 0 not finished (see
-[What is still open](#what-is-still-open)).
+**Date:** 11 October 2026, Trendyol updated 12 October 2026 · **Status:** source measurements complete; Phase 0 not
+finished (see [What is still open](#what-is-still-open)).
 
 This summarises the project's Turkish feasibility report, which is kept outside the repository like the raw evidence.
 Codes such as K21 refer to the project's decision log.
@@ -22,6 +22,8 @@ and how much storage a year of data needs.
   the project's own rule. The production client now starts the gap after the previous response has been received
   (commit `4d79131`).
 - No challenge page, 403 or 429 appeared, but only under that load and with the temporary identity.
+- On 12 October Trendyol was measured again with the production client and the permanent identity: 29 requests
+  (robots.txt included), all HTTP 200, no redirects, challenges or refusals, about 2.7 s per request (n=26).
 
 ## Sources tested
 
@@ -36,7 +38,7 @@ without trying to get past any protection.
 | n11, Hepsiburada | Marketplaces | Blocked with both identities | Dropped |
 | Getmobil | Refurbished marketplace, many sellers | Each variant page lists every seller with price and stock | **GO** |
 | Easycep | Refurbished retailer, single seller | One listing gives price, quantity, condition and battery range per SKU | **GO** |
-| Trendyol | Marketplace | Reachable; product pages show the winning seller and other sellers (4 in the sample), but whether that list is complete is unknown and there is no battery health field | **Conditional**; stays in Phase 5 (confirmed by the owner) |
+| Trendyol | Marketplace | The refurbished Apple phone category lists 843 products, 36 a page; each product page lists the winning seller and every other seller with price and listing id (up to 13 on a new phone, up to 5 on refurbished ones); no battery health, SIM type or stock quantity | **Conditional GO**: adapter written; joins the nightly run after the current 3-day trial (owner's decision) |
 | TCMB | Central bank exchange rates | Daily and archive XML files | Used for USD/TRY |
 
 **Why the classifieds were dropped (K4):** their bot protection ignores the User-Agent and checks whether the client
@@ -74,10 +76,12 @@ price.
 | Getmobil | ~805: 1 brand page, 74 listing pages, 1 sitemap, 689 variant pages, ~40 re-checks of ids that left the listing (assumption) | ~2.3 h (range ~1.9–2.7 h) |
 | Easycep | 6 listing pages + 0–30 unit pages for new ids | ~1–6 min |
 | Easycep, once | 169 unit pages to read the flags of the current SKUs | ~25–30 min |
+| Trendyol | ~868: 24 listing pages + ~843 product pages + robots.txt | ~40 min–1.3 h (estimate from 2.7 s per request, n=26; to be measured on a full run) |
 | TCMB | 1 | — |
 
-- About 810–840 requests a day. Getmobil gets a full pass every day and, since the sources run in parallel, sets the
-  collection time.
+- About 810–840 requests a day for Getmobil and Easycep, and about 870 more once Trendyol joins; every source stays
+  within its own 1,500-request budget. Getmobil gets a full pass every day and, since the sources run in parallel,
+  sets the collection time.
 - Getmobil responses took 5.8–9.2 s (n=6). With the 2–3.5 s gap after each response, a request cycle is ~8.6–12.0 s,
   3.1–4.4 times the plan's 2.75 s. Getmobil uses ~54% of the 1,500-request per-source budget and fits the 6-hour
   GitHub Actions job limit, but the whole budget would take ~4.2 h (range ~3.6–5.0 h).
@@ -91,6 +95,8 @@ price.
 | Active offers per day | ~3,000 | ~1,700 (estimate; ~1,390–2,530) |
 | Payload per offer | ~2 KB | ~0.4–0.5 KB (measured) |
 | Database after one year | ~200–250 MB | ~80–120 MB; ~235–265 MB in the upper scenario |
+
+Trendyol is not in these figures yet; it adds an estimated 2,100–2,600 offers a day (rough, from 9 product pages).
 
 The upper scenario stores every payload every day at the upper offer count, which applies if the daily change rate
 (not measured yet) is high. Both stay under Neon's last known free storage of 0.5 GB. Whole pages are not stored:
@@ -113,6 +119,11 @@ Getmobil's RSC payload alone is 196–282 KB per page.
    cosmetic grades. The listing lacks the flags, so the unit page of each new id is read once.
 5. **An offer is not a device.** One Getmobil seller held 91 units of one variant, and on Easycep a sale, a reservation
    and a withdrawal look the same, so the project speaks of delisting, not sales.
+6. **Two prices on Trendyol.** Most offers carry an automatic basket promotion (usually 5%, sometimes a fixed amount
+   on top). The stored price is the one a buyer pays today (`discountedPrice`); the sticker price and the promotion
+   percent are kept beside it. Trendyol shows no stock quantity, its card categories are unreliable (refurbished
+   phones also appear under "IOS Cep Telefonları") and Getmobil's owner also sells there, so the sources are not
+   independent.
 
 ## Crawling and privacy rules
 
@@ -129,18 +140,20 @@ What site owners need is in the README section [For site owners](../README.md#fo
 - **Catalogue (K12):** only aggregates and model outputs are published, with links back to the original pages. Test
   fixtures are synthetic, and the raw Phase 0 pages will be deleted.
 - **Sellers (K22):** display names, vendor slugs, store links and legal fields are never stored or shown, because slugs
-  and store links often contain a store owner's personal name; only the numeric seller id is kept. The deals table
-  shows the platform, the price and, for Getmobil, a link to the variant page with `?merchantId=<seller_id>`, where the
-  platform itself shows the seller. Public charts label sellers anonymously (Seller A, Seller B, ...). Known
-  limitation: if that offer has ended, the link can show another seller, so the table shows the collection time and
-  ended offers drop out on the next run.
+  and store links often contain a store owner's personal name; only the numeric seller id is kept. Trendyol's
+  product pages carry each seller's legal name, tax number, registered e-mail and address; the adapter drops them and
+  the payload validator refuses them. The deals table shows the platform, the price and, for Getmobil and Trendyol, a
+  link to the product page with `?merchantId=<seller_id>`, where the platform itself shows the seller. Public charts
+  label sellers anonymously (Seller A, Seller B, ...). Known limitation: if that offer has ended, the link can show
+  another seller, so the table shows the collection time and ended offers drop out on the next run.
 
 ## Scope (K21)
 
 iPhone X and newer are collected, including iPhone SE (2020) and SE (2022). iPhone 8 / 8 Plus and older, including the
 first SE, are not (`scope.excluded_models` in [`config/settings.yaml`](../config/settings.yaml)). On Getmobil this
 leaves out 5 models (iPhone 6, 7, 7 Plus, 8 and 8 Plus) with 15 variants and 5 listing pages, 20 requests a day. All of
-Easycep's stock is in scope.
+Easycep's stock is in scope, and so were the 231 Trendyol cards read on 12 October; a Trendyol card whose title names
+an older model is skipped before its product page is requested.
 
 ## What is still open
 
@@ -155,6 +168,13 @@ Easycep's stock is in scope.
   chosen.
 - **Neon:** project in AWS eu-central-1 (Frankfurt); the connection string is kept in a local `.env` file and a GitHub
   Actions secret. The connection test succeeded (PostgreSQL 18.6); the free-plan limits are not recorded yet.
+- **Trendyol:** the adapter was checked against the 31 archived Trendyol pages without sending any request. Open:
+  the owner's decision on the terms of use (no clause on bots; copying or republishing "Materyal", machine-readable
+  data included, needs permission) and the unread membership agreement; listing pages 7–23 were never fetched, so
+  the 843 total and the page drift are only partly measured; how many refurbished phones are filed outside the
+  category; whether the seller list has a cap above 13; whether listing ids stay stable from day to day; whether
+  `?merchantId=` alone selects the seller (the site's own links add `boutiqueId` and `sav`); and how the site reacts to
+  about 870 requests a day.
 - **Other:** a DagsHub account; a Power BI Desktop → Neon test (Power BI Desktop is not installed yet); Easycep's terms
   of use, which load only in a browser and are still unread; the meaning of Easycep's SKU flags; Getmobil's offer
   lifecycle (no variant page was fetched twice). Redirect targets are now checked against robots.txt before they are
