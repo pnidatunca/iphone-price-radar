@@ -120,11 +120,14 @@ Getmobil's RSC payload alone is 196–282 KB per page.
    cosmetic grades. The listing lacks the flags, so the unit page of each new id is read once.
 5. **An offer is not a device.** One Getmobil seller held 91 units of one variant, and on Easycep a sale, a reservation
    and a withdrawal look the same, so the project speaks of delisting, not sales.
-6. **Two prices on Trendyol.** Most offers carry an automatic basket promotion (usually 5%, sometimes a fixed amount
-   on top). The stored price is the one a buyer pays today (`discountedPrice`); the sticker price and the promotion
-   percent are kept beside it. Trendyol shows no stock quantity, its card categories are unreliable (refurbished
-   phones also appear under "IOS Cep Telefonları") and Getmobil's owner also sells there, so the sources are not
-   independent.
+6. **Prices before a discount.** Every offer stores the price a buyer pays today, the earlier price its page shows
+   (or the same price when it shows none) and the discount between them, with one rule for all platforms (decision
+   of 13 October 2026). On Trendyol most offers carry an automatic basket promotion (usually 5%, sometimes a fixed
+   amount on top; 26 of 43 archived offers). On Getmobil only the buybox offer can show a struck-through price: 1 of
+   30 archived variant pages (7.63%), none of 117 alternative sellers. On Easycep `basePrice` equalled `salePrice` on
+   all 169 archived items. No implausible earlier price appeared. Trendyol shows no stock quantity, its card
+   categories are unreliable (refurbished phones also appear under "IOS Cep Telefonları") and Getmobil's owner also
+   sells there, so the sources are not independent.
 7. **New phones on Trendyol.** Their price depends heavily on the warranty type ("Garanti Tipi": Apple Türkiye or
    importer warranty), so it is stored raw for every offer and the deal section for new phones is split by it;
    otherwise importer-warranty phones would look like deals every day. The iPhone category shows 12 sponsored cards on

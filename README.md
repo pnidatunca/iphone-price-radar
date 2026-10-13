@@ -34,8 +34,11 @@ new phones.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
 - The crawler identifies itself honestly; its User-Agent links to the [notice for site owners](#for-site-owners).
 - No personal data is collected.
-- The price stored is what a buyer pays today. Where a marketplace takes an automatic basket promotion off at checkout
-  (Trendyol), the sticker price and the promotion percent are kept as well; per-user coupons are ignored.
+- Prices mean the same on every platform: `price_tl` is what a buyer pays today for the offer, `list_price_tl` the
+  price before a temporary discount that the page itself shows for that offer (Trendyol's sticker price before the
+  automatic basket promotion, Getmobil's struck-through price, Easycep's base price), or `price_tl` when the page shows
+  none, and `promo_pct` the discount between the two. An implausible earlier price is not stored and is reported;
+  per-user coupons are ignored.
 - Raw catalogue data (images, descriptions, product lists) is not republished. Only aggregated analyses and model
   outputs are shown, with links to the original product pages.
 
