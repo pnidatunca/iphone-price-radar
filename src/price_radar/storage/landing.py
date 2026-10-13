@@ -6,6 +6,7 @@ as a GitHub artifact, because artifacts of a public repository are public.
 
     python -m price_radar.storage.landing load --run-dir DIR --run-id ID [--exit-code N]
     python -m price_radar.storage.landing known-ids --out FILE
+    python -m price_radar.storage.landing loaded-today --source SOURCE
 
 ``known-ids`` lists the Easycep ids whose unit page was read in an earlier run (their offers carry a SKU), so the next
 run reads unit pages only for new ids.
@@ -18,6 +19,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from price_radar.config import database_url
+from price_radar.ingest.crawl import TURKEY
 
 log = logging.getLogger(__name__)
 
@@ -126,9 +129,24 @@ def known_unit_ids(conn: psycopg.Connection) -> list[str]:
     return [key.removeprefix("easycep:") for (key,) in rows]
 
 
+def loaded_today(conn: psycopg.Connection, source: str, snapshot_date: str) -> bool:
+    """True if a run of ``source`` for this Turkish calendar day was loaded and ended normally (exit code 0)."""
+    if conn.execute("select to_regclass('raw.landing_runs')").fetchone()[0] is None:
+        return False
+    row = conn.execute(
+        "select 1 from raw.landing_runs where source = %s and summary->>'snapshot_date' = %s and exit_code = 0 limit 1",
+        (source, snapshot_date),
+    ).fetchone()
+    return row is not None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m price_radar.storage.landing")
     commands = parser.add_subparsers(dest="command", required=True)
+    today_cmd = commands.add_parser(
+        "loaded-today", help="print 'true' if today's run of a source is already loaded (Turkish calendar day)"
+    )
+    today_cmd.add_argument("--source", required=True)
     load_cmd = commands.add_parser("load", help="load one run directory into raw.landing")
     load_cmd.add_argument("--run-dir", type=Path, required=True)
     load_cmd.add_argument("--run-id", required=True)
@@ -147,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
             run = read_run(args.run_dir, args.run_id)
             count = load(conn, run, args.exit_code)
             log.info("loaded run %s: %s %s offers", run.run_id, count, run.source)
+        elif args.command == "loaded-today":
+            today = datetime.now(UTC).astimezone(TURKEY).date().isoformat()
+            print("true" if loaded_today(conn, args.source, today) else "false")
         else:
             ids = known_unit_ids(conn)
             args.out.write_text("".join(f"{item}\n" for item in ids), encoding="utf-8")

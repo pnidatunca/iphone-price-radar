@@ -5,7 +5,10 @@ name: trial-crawl
 
 on:
   schedule:
-    - cron: "17 0 * * *"   # 03:17 Turkey time (UTC+3); minute 17 avoids the top-of-the-hour queue
+    # GitHub delays or drops scheduled runs at busy times; the 00:17 UTC slot was skipped on 13.10.2026. Run at
+    # 04:47 Turkey time (UTC+3), with a fallback at 08:47 that does nothing if that day's run is already loaded.
+    - cron: "47 1 * * *"
+    - cron: "47 5 * * *"
   workflow_dispatch:
     inputs:
       max_requests:
@@ -38,13 +41,20 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Install dependencies
         run: uv sync --locked
+      - name: Skip if today's run is already loaded
+        id: guard
+        # Scheduled runs only; a manual run always crawls. If the database cannot be asked, the crawl runs anyway.
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        run: echo "skip=$(uv run python -m price_radar.storage.landing loaded-today --source "$SOURCE")" >> "$GITHUB_OUTPUT"
       - name: Known Easycep ids
-        if: matrix.source == 'easycep'
+        if: matrix.source == 'easycep' && steps.guard.outputs.skip != 'true'
         # Without the list the crawl simply reads every unit page again, so a database hiccup must not stop it.
         continue-on-error: true
         run: uv run python -m price_radar.storage.landing known-ids --out "$RUNNER_TEMP/known-ids.txt"
       - name: Crawl
         id: crawl
+        if: steps.guard.outputs.skip != 'true'
         run: |
           args=(--source "$SOURCE" --max-requests "$MAX_REQUESTS" --out "$RUNNER_TEMP/run" --markdown)
           if [ -f "$RUNNER_TEMP/known-ids.txt" ]; then args+=(--known-ids "$RUNNER_TEMP/known-ids.txt"); fi
@@ -56,7 +66,7 @@ jobs:
           exit "$code"
       - name: Load into Neon
         # Also after a failed crawl: the summary (and any offers collected before the stop) is still worth keeping.
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         env:
           EXIT_CODE: ${{ steps.crawl.outputs.exit_code }}
         run: |
