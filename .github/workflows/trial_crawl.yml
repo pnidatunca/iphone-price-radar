@@ -63,6 +63,9 @@ jobs:
           code=${PIPESTATUS[0]}
           set -e
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          # A run cut short by its request budget exits 0 but is incomplete; make that visible.
+          reason=$(jq -r '.stop_reason // "missing"' "$RUNNER_TEMP/run/run_summary.json" 2>/dev/null || echo missing)
+          if [ "$reason" != "completed" ]; then echo "::warning title=Incomplete $SOURCE run::$reason"; fi
           exit "$code"
       - name: Load into Neon
         # Also after a failed crawl: the summary (and any offers collected before the stop) is still worth keeping.
@@ -74,3 +77,8 @@ jobs:
           args=(--run-dir "$RUNNER_TEMP/run" --run-id "$RUN_ID")
           if [ -n "$EXIT_CODE" ]; then args+=(--exit-code "$EXIT_CODE"); fi
           uv run python -m price_radar.storage.landing load "${args[@]}"
+      - name: Database size
+        # raw.landing has no retention until Phase 1; warn at 70% of Neon's free storage.
+        if: always() && steps.guard.outputs.skip != 'true'
+        continue-on-error: true
+        run: uv run python -m price_radar.storage.landing db-size --warn-mb 350 | tee -a "$GITHUB_STEP_SUMMARY"

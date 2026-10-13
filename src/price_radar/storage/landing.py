@@ -7,6 +7,7 @@ as a GitHub artifact, because artifacts of a public repository are public.
     python -m price_radar.storage.landing load --run-dir DIR --run-id ID [--exit-code N]
     python -m price_radar.storage.landing known-ids --out FILE
     python -m price_radar.storage.landing loaded-today --source SOURCE
+    python -m price_radar.storage.landing db-size [--warn-mb 350]
 
 ``known-ids`` lists the Easycep ids whose unit page was read in an earlier run (their offers carry a SKU), so the next
 run reads unit pages only for new ids.
@@ -130,14 +131,23 @@ def known_unit_ids(conn: psycopg.Connection) -> list[str]:
 
 
 def loaded_today(conn: psycopg.Connection, source: str, snapshot_date: str) -> bool:
-    """True if a run of ``source`` for this Turkish calendar day was loaded and ended normally (exit code 0)."""
+    """True if a complete run of ``source`` for this Turkish calendar day was loaded: exit code 0 and the crawl got
+    to the end. A run cut short by its request budget also exits 0, but it does not count as done."""
     if conn.execute("select to_regclass('raw.landing_runs')").fetchone()[0] is None:
         return False
     row = conn.execute(
-        "select 1 from raw.landing_runs where source = %s and summary->>'snapshot_date' = %s and exit_code = 0 limit 1",
+        "select 1 from raw.landing_runs where source = %s and summary->>'snapshot_date' = %s and exit_code = 0"
+        " and summary->>'stop_reason' = 'completed' limit 1",
         (source, snapshot_date),
     ).fetchone()
     return row is not None
+
+
+def size_report(size_bytes: int, warn_mb: float, limit_mb: float) -> tuple[str, bool]:
+    """A one-line Markdown report of the database size and whether it crossed the warning threshold."""
+    size_mb = size_bytes / 1024 / 1024
+    text = f"Neon database size: {size_mb:.1f} MB of the {limit_mb:.0f} MB free limit ({size_mb / limit_mb:.0%})"
+    return text, size_mb >= warn_mb
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         "loaded-today", help="print 'true' if today's run of a source is already loaded (Turkish calendar day)"
     )
     today_cmd.add_argument("--source", required=True)
+    size_cmd = commands.add_parser("db-size", help="report the database size; warn when it nears the free limit")
+    size_cmd.add_argument("--warn-mb", type=float, default=350.0, help="warning threshold (default 70%% of 500 MB)")
+    size_cmd.add_argument("--limit-mb", type=float, default=500.0, help="free storage limit (Neon, last known)")
     load_cmd = commands.add_parser("load", help="load one run directory into raw.landing")
     load_cmd.add_argument("--run-dir", type=Path, required=True)
     load_cmd.add_argument("--run-id", required=True)
@@ -168,6 +181,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "loaded-today":
             today = datetime.now(UTC).astimezone(TURKEY).date().isoformat()
             print("true" if loaded_today(conn, args.source, today) else "false")
+        elif args.command == "db-size":
+            size = conn.execute("select pg_database_size(current_database())").fetchone()[0]
+            text, warn = size_report(size, args.warn_mb, args.limit_mb)
+            print(text)
+            if warn:
+                # A GitHub Actions annotation: shown as a warning on the run page.
+                print(f"::warning title=Neon storage::{text}. Phase 1 retention is needed soon.")
         else:
             ids = known_unit_ids(conn)
             args.out.write_text("".join(f"{item}\n" for item in ids), encoding="utf-8")

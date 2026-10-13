@@ -3,7 +3,7 @@ import json
 import pytest
 
 from price_radar.config import database_url
-from price_radar.storage.landing import offer_rows, read_run
+from price_radar.storage.landing import offer_rows, read_run, size_report
 
 SUMMARY = {
     "source": "easycep",
@@ -52,6 +52,13 @@ def test_offer_from_another_source_is_refused(tmp_path):
     run_dir = write_run(tmp_path, [offer("getmobil:1:2", platform="getmobil")])
     with pytest.raises(ValueError):
         read_run(run_dir, "123-easycep")
+
+
+def test_size_report_warns_from_the_threshold_on():
+    text, warn = size_report(120 * 1024 * 1024, warn_mb=350, limit_mb=500)
+    assert text == "Neon database size: 120.0 MB of the 500 MB free limit (24%)"
+    assert not warn
+    assert size_report(350 * 1024 * 1024, warn_mb=350, limit_mb=500)[1]
 
 
 def test_database_url_prefers_the_environment(tmp_path, monkeypatch):
