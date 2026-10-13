@@ -43,10 +43,11 @@ shown (``runningOutQuantity`` is often 0 for available items), so ``stock_qty`` 
 embed at most 12 other merchants (``OTHER_MERCHANTS_SHOWN``), next to a "TÜM SATICILARI GÖSTER" link to ``/saticilar``,
 which robots.txt disallows; a page with that many is reported as possibly cut.
 
-Price rule (owner's decision). ``price_tl`` is what a buyer pays today: ``discountedPrice``, the selling price minus
-the basket promotion Trendyol applies automatically (a percentage, a fixed amount or both). ``list_price_tl`` is the
-sticker price (``sellingPrice``) and ``promo_pct`` the resulting discount in percent of it. Per-user coupons
-(``couponApplicablePrice``, app codes) are ignored and ``originalPrice`` is never used.
+Price rule (owner's decision, the same on every platform: see schemas.py). ``price_tl`` is what a buyer pays today:
+``discountedPrice``, the selling price minus the basket promotion Trendyol applies automatically (a percentage, a fixed
+amount or both). ``list_price_tl`` is the sticker price (``sellingPrice``), or ``price_tl`` when the page shows none,
+and ``promo_pct`` the discount in percent of it. Per-user coupons (``couponApplicablePrice``, app codes) are ignored
+and ``originalPrice`` is never used.
 
 Attributes. Model and storage come from the product attributes ("Cep Telefonu Modeli", "Dahili Hafıza"), with the
 title as fallback. Colour comes from the title, which names it ("Yıldız Işığı") where the "Renk" attribute is a coarse
@@ -91,12 +92,12 @@ from price_radar.ingest.normalize import (
     storage_gb,
     storage_in_text,
 )
-from price_radar.ingest.schemas import CENTS, RawOffer, error_summary
+from price_radar.ingest.schemas import RawOffer, error_summary, list_price_and_promo
 
 log = logging.getLogger(__name__)
 
 SOURCE = "trendyol"
-PARSER_VERSION = "trendyol-2"
+PARSER_VERSION = "trendyol-3"  # 3: list_price_tl falls back to price_tl
 HOST = "www.trendyol.com"
 BASE_URL = f"https://{HOST}"
 REFURBISHED = "refurbished"
@@ -214,6 +215,7 @@ class ProductPage:
     rejected: tuple[str, ...] = ()  # offers that failed validation, with the reason
     warnings: tuple[str, ...] = ()
     model_attribute: tuple[int, str] | None = None  # "Cep Telefonu Modeli" value id and name, for the model page
+    list_price_problems: tuple[str, ...] = ()  # implausible sticker prices that were not used, with the reason
 
     @property
     def kind(self) -> str:
@@ -443,6 +445,7 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
         tuple(build.rejected),
         tuple(warnings),
         model_attribute(product),
+        tuple(build.list_problems),
     )
 
 
@@ -506,13 +509,6 @@ def attribute_grade(value: str | None) -> str | None:
     return next((letter for words, letter in GRADE_WORDS if words in text), None)
 
 
-def promo_pct(list_price: Decimal, paid: Decimal) -> Decimal | None:
-    """The basket promotion in percent of the sticker price; None when the price paid is above it (an error)."""
-    if paid > list_price:
-        return None
-    return ((list_price - paid) / list_price * 100).quantize(CENTS)
-
-
 @dataclass
 class _OfferBuilder:
     """Turns the merchants of one product page into validated offers; invalid ones become rejections."""
@@ -529,16 +525,17 @@ class _OfferBuilder:
     snapshot_date: date
     offers: list[RawOffer] = field(default_factory=list)
     rejected: list[str] = field(default_factory=list)
+    list_problems: list[str] = field(default_factory=list)
 
     def add(self, seller: _Seller, merchant_id: int | None) -> None:
         key = f"{SOURCE}:{self.content_id}:{merchant_id}"
         try:
             if merchant_id is None or merchant_id < 1:
                 raise ValueError("no merchant id")
-            listed = _price(seller.variant, "sellingPrice")
             paid = _price(seller.variant, "discountedPrice")
-            if listed is None or paid is None:
-                raise ValueError("no sellingPrice or discountedPrice")
+            if paid is None:
+                raise ValueError("no discountedPrice")
+            listed, promo, problem = list_price_and_promo(paid, _price(seller.variant, "sellingPrice"))
             offer = RawOffer(
                 platform=SOURCE,
                 offer_key=key,
@@ -555,7 +552,7 @@ class _OfferBuilder:
                 is_buybox=seller.is_buybox,
                 price_tl=paid,
                 list_price_tl=listed,
-                promo_pct=promo_pct(listed, paid),
+                promo_pct=promo,
                 stock_qty=None,
                 in_stock=True,
                 product_url=self.product_url,
@@ -567,6 +564,8 @@ class _OfferBuilder:
             self.rejected.append(f"{key}: {error_summary(err)}")
             return
         self.offers.append(offer)
+        if problem:
+            self.list_problems.append(f"{key}: {problem}")
 
 
 @dataclass
@@ -802,6 +801,9 @@ def _product_offers(ctx: CrawlContext, card: ListingCard, models: dict[int, str]
     for reason in page.rejected:
         counters["offers_rejected"] += 1
         ctx.stats.warn(f"rejected offer {reason}")
+    for problem in page.list_price_problems:
+        counters["implausible_list_prices"] += 1
+        ctx.stats.warn(f"implausible list price not used: {problem}")
     if not ctx.scope.includes(page.model):
         counters["products_out_of_scope"] += 1
         return

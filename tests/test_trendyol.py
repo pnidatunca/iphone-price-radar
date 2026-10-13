@@ -266,12 +266,53 @@ def test_a_merchant_listed_twice_gives_one_offer():
     assert result.warnings == ("merchant 7002 is listed twice",)
 
 
-def test_a_price_above_the_sticker_price_is_rejected_not_stored():
+def with_other_merchant_price(**prices: float | None) -> str:
+    """The P1 page with the first other merchant's (7002) prices changed; None removes a price."""
     value = state("product_buybox_others.html")
-    value["product"]["merchantListing"]["otherMerchants"][0]["variants"][0]["price"]["discountedPrice"]["value"] = 40000
-    result = parse_html(html_with(trendyol.PRODUCT_STATE, value), P1)
+    price = value["product"]["merchantListing"]["otherMerchants"][0]["variants"][0]["price"]
+    for key, amount in prices.items():
+        if amount is None:
+            price.pop(key)
+        else:
+            price[key]["value"] = amount
+    return html_with(trendyol.PRODUCT_STATE, value)
+
+
+def test_a_sticker_price_below_the_price_paid_is_not_used_but_the_offer_is_kept():
+    result = parse_html(with_other_merchant_price(discountedPrice=40000), P1)
+    offer = next(o for o in result.offers if o.seller_id == 7002)
+    assert (offer.price_tl, offer.list_price_tl, offer.promo_pct) == (Decimal("40000.00"), Decimal("40000.00"), 0)
+    assert result.list_price_problems == ("trendyol:900000101:7002: list price 31500 is below the price paid 40000",)
+    assert result.rejected == ()
+
+
+def test_an_implausibly_high_sticker_price_is_not_used():
+    result = parse_html(with_other_merchant_price(sellingPrice=99999), P1)
+    offer = next(o for o in result.offers if o.seller_id == 7002)
+    assert (offer.list_price_tl, offer.promo_pct) == (offer.price_tl, 0)
+    assert result.list_price_problems == (
+        "trendyol:900000101:7002: list price 99999 would mean a 70.07% discount on 29925.0",
+    )
+
+
+def test_without_a_sticker_price_the_list_price_is_the_price_paid():
+    result = parse_html(with_other_merchant_price(sellingPrice=None), P1)
+    offer = next(o for o in result.offers if o.seller_id == 7002)
+    assert (offer.price_tl, offer.list_price_tl, offer.promo_pct) == (Decimal("29925.00"), Decimal("29925.00"), 0)
+    assert result.list_price_problems == ()
+
+
+def test_without_the_price_paid_the_offer_is_rejected():
+    result = parse_html(with_other_merchant_price(discountedPrice=None), P1)
     assert [o.seller_id for o in result.offers] == [7001, 7003]
-    assert len(result.rejected) == 1 and result.rejected[0].startswith("trendyol:900000101:7002:")
+    assert result.rejected == ("trendyol:900000101:7002: no discountedPrice",)
+
+
+def test_every_offer_has_a_list_price_and_a_promotion_percent():
+    for path in PAGES:
+        for offer in parse(path).offers:
+            assert offer.list_price_tl is not None and offer.promo_pct is not None, offer.offer_key
+            assert offer.list_price_tl >= offer.price_tl
 
 
 @pytest.mark.parametrize(
@@ -662,3 +703,15 @@ def test_model_pages_disallowed_by_robots_are_not_used_and_reported():
     }
     assert any(w.startswith("robots.txt disallows the model pages") for w in ctx.stats.warnings)
     assert ctx.stats.discovery["new_category_coverage"]["remaining_gap"] == 12
+
+
+def test_an_implausible_sticker_price_is_counted_in_the_run():
+    fake = site(**{P1: with_other_merchant_price(discountedPrice=40000)})
+    ctx = fake.context(max_variants=1)
+    offers = list(trendyol.crawl(ctx))
+    assert len(offers) == 3
+    assert ctx.stats.counters["implausible_list_prices"] == 1
+    assert (
+        "implausible list price not used: trendyol:900000101:7002: list price 31500 is below the price paid 40000"
+        in ctx.stats.warnings
+    )

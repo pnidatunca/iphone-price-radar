@@ -181,3 +181,39 @@ def test_a_spent_budget_still_yields_the_listing_offers_then_stops():
             offers.append(offer)
     assert [o.offer_key for o in offers] == ["easycep:700001", "easycep:700002", "easycep:700003"]
     assert ctx.stats.counters["units_not_read_after_stop"] == 1
+
+
+def test_without_a_discount_the_list_price_is_the_sale_price():
+    offer = easycep.build_offer(
+        listing_items("listing_p1.html")[0], unit=None, fetched_at=NOW, snapshot_date=NOW.date()
+    )
+    assert (offer.price_tl, offer.list_price_tl, offer.promo_pct) == (Decimal("25490.00"), Decimal("25490.00"), 0)
+
+
+def test_a_discount_keeps_the_base_price_as_the_list_price():
+    discounted, implausible = listing_items("listing_discount.html")
+    problems: list[str] = []
+    offer = easycep.build_offer(discounted, unit=None, fetched_at=NOW, snapshot_date=NOW.date(), problems=problems)
+    assert (offer.price_tl, offer.list_price_tl, offer.promo_pct) == (
+        Decimal("38990.00"),
+        Decimal("41990.00"),
+        Decimal("7.14"),
+    )
+    assert problems == []
+
+
+def test_a_base_price_below_the_sale_price_is_not_used():
+    _, implausible = listing_items("listing_discount.html")
+    problems: list[str] = []
+    offer = easycep.build_offer(implausible, unit=None, fetched_at=NOW, snapshot_date=NOW.date(), problems=problems)
+    assert (offer.price_tl, offer.list_price_tl, offer.promo_pct) == (Decimal("24990.00"), Decimal("24990.00"), 0)
+    assert offer.payload["price"]["basePrice"] == "2499.00"  # kept raw in the payload
+    assert problems == ["easycep:700006: list price 2499.00 is below the price paid 24990.00"]
+
+
+def test_an_implausible_base_price_is_counted_in_the_run():
+    fake = FakeSite(BASE, {"/kategori/apple-2?page=1": page("easycep/listing_discount.html")})
+    ctx = fake.context(known_ids=frozenset({"700005", "700006"}))
+    offers = list(easycep.crawl(ctx))
+    assert [(o.offer_key, o.promo_pct) for o in offers] == [("easycep:700005", Decimal("7.14")), ("easycep:700006", 0)]
+    assert ctx.stats.counters["implausible_list_prices"] == 1

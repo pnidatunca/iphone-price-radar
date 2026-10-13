@@ -16,7 +16,7 @@ from price_radar.ingest.normalize import (
     storage_gb,
     storage_in_text,
 )
-from price_radar.ingest.schemas import HASHED_FIELDS, RawOffer
+from price_radar.ingest.schemas import HASHED_FIELDS, RawOffer, list_price_and_promo
 
 
 def offer(**changes) -> dict:
@@ -277,3 +277,26 @@ def test_colour_names_get_one_spelling(raw, expected):
 )
 def test_colours_are_found_in_titles(title, expected):
     assert color_in_text(title) == expected
+
+
+def test_a_list_price_equal_to_the_price_hashes_like_none():
+    base = RawOffer(**offer())
+    same = RawOffer(**offer(list_price_tl="24990", promo_pct="0"))
+    assert same.payload_hash == base.payload_hash
+
+
+@pytest.mark.parametrize(
+    ("paid", "shown", "expected"),
+    [
+        ("24990", None, ("24990", "0.00", None)),
+        ("24990", "24990", ("24990", "0.00", None)),
+        ("28024.05", "29499", ("29499", "5.00", None)),
+        ("100", "110", ("110", "9.09", None)),
+        ("24990", "2499", ("24990", "0.00", "list price 2499 is below the price paid 24990")),
+        ("100", "300", ("100", "0.00", "list price 300 would mean a 66.67% discount on 100")),
+        ("500000", "1000001", ("500000", "0.00", "list price 1000001 would mean a 50.00% discount on 500000")),
+    ],
+)
+def test_the_list_price_rule(paid, shown, expected):
+    listed, promo, problem = list_price_and_promo(Decimal(paid), Decimal(shown) if shown else None)
+    assert (listed, promo, problem) == (Decimal(expected[0]), Decimal(expected[1]), expected[2])

@@ -11,6 +11,10 @@ Offers. A variant page names the selected (buybox) seller in ``priceInfo``/``sto
 seller in ``alternativeSellersData.sellers``. JSON-LD is not used: its offers hold at most the ten cheapest
 alternatives and leave out the buybox seller, which is often Getmobil itself.
 
+Prices (the rule of schemas.py). ``price_tl`` is the seller's price (``priceInfo.main`` for the buybox). The buybox
+sometimes shows a struck-through earlier price (``priceInfo.strikethrough``), which becomes ``list_price_tl``; other
+sellers show none, so for them, and for a buybox without one, ``list_price_tl`` is ``price_tl``.
+
 Phase 0 traps this module avoids:
 
 * ``rel=canonical`` of a non-Mükemmel variant points to its Mükemmel sibling and URL slugs can name the wrong storage
@@ -36,12 +40,12 @@ from price_radar.ingest import urls
 from price_radar.ingest.crawl import CrawlContext
 from price_radar.ingest.normalize import as_decimal, as_int, canonical_model, clean_text, storage_gb
 from price_radar.ingest.rsc import Flight, FlightError
-from price_radar.ingest.schemas import RawOffer, error_summary
+from price_radar.ingest.schemas import RawOffer, error_summary, list_price_and_promo
 
 log = logging.getLogger(__name__)
 
 SOURCE = "getmobil"
-PARSER_VERSION = "getmobil-1"
+PARSER_VERSION = "getmobil-2"  # 2: list_price_tl and promo_pct filled
 HOST = "getmobil.com"
 BASE_URL = f"https://{HOST}"
 CATALOG = "/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
@@ -119,6 +123,7 @@ class VariantPage:
     offers: tuple[RawOffer, ...]
     rejected: tuple[str, ...] = ()  # offers that failed validation, with the reason
     warnings: tuple[str, ...] = ()
+    list_price_problems: tuple[str, ...] = ()  # implausible struck-through prices that were not used, with the reason
 
 
 def check_url(url: str) -> str:
@@ -247,7 +252,14 @@ def parse_variant_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
         "strikethrough_price": price.get("strikethrough"),
         "battery_addon_price": _battery_addon(view, buybox_vendor),
     }
-    build.add(buybox_vendor, price.get("main"), as_int(stock.get("count")), is_buybox=True, seller=buybox)
+    build.add(
+        buybox_vendor,
+        price.get("main"),
+        as_int(stock.get("count")),
+        is_buybox=True,
+        seller=buybox,
+        list_price=price.get("strikethrough"),
+    )
 
     alternatives = flight.first_value("alternativeSellersData")
     sellers = alternatives.get("sellers") if isinstance(alternatives, dict) else None
@@ -275,7 +287,15 @@ def parse_variant_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
     selected = [option for option in options if isinstance(option, dict) and option.get("isSelected")]
     if selected and as_decimal(selected[0].get("price")) != as_decimal(price.get("main")):
         warnings.append("selected condition price differs from priceInfo.main")
-    return VariantPage(variant_id, model, True, tuple(build.offers), tuple(build.rejected), tuple(warnings))
+    return VariantPage(
+        variant_id,
+        model,
+        True,
+        tuple(build.offers),
+        tuple(build.rejected),
+        tuple(warnings),
+        tuple(build.list_problems),
+    )
 
 
 @dataclass
@@ -292,14 +312,26 @@ class _OfferBuilder:
     snapshot_date: date
     offers: list[RawOffer] = field(default_factory=list)
     rejected: list[str] = field(default_factory=list)
+    list_problems: list[str] = field(default_factory=list)
 
     def add(
-        self, vendor: int | None, price: Any, stock: int | None, *, is_buybox: bool, seller: dict[str, Any]
+        self,
+        vendor: int | None,
+        price: Any,
+        stock: int | None,
+        *,
+        is_buybox: bool,
+        seller: dict[str, Any],
+        list_price: Any = None,
     ) -> None:
         key = f"getmobil:{self.variant_id}:{vendor}"
         try:
             if vendor is None or vendor < 1:
                 raise ValueError("no vendor id")
+            paid = as_decimal(price)
+            if paid is None:
+                raise ValueError("no price")
+            listed, promo, problem = list_price_and_promo(paid, as_decimal(list_price))
             offer = RawOffer(
                 platform=SOURCE,
                 offer_key=key,
@@ -313,7 +345,9 @@ class _OfferBuilder:
                 sku=clean_text(self.cart.get("sku")) or None,
                 seller_id=vendor,
                 is_buybox=is_buybox,
-                price_tl=as_decimal(price),
+                price_tl=paid,
+                list_price_tl=listed,
+                promo_pct=promo,
                 stock_qty=stock,
                 in_stock=(stock or 0) > 0,
                 product_url=self.product_url,
@@ -325,6 +359,8 @@ class _OfferBuilder:
             self.rejected.append(f"{key}: {error_summary(err)}")
             return
         self.offers.append(offer)
+        if problem:
+            self.list_problems.append(f"{key}: {problem}")
 
     def _variant(self) -> dict[str, Any]:
         view = self.view
@@ -484,6 +520,9 @@ def _variant_offers(ctx: CrawlContext, variant: ListingVariant) -> Iterator[RawO
     for reason in page.rejected:
         ctx.stats.counters["offers_rejected"] += 1
         ctx.stats.warn(f"rejected offer {reason}")
+    for problem in page.list_price_problems:
+        ctx.stats.counters["implausible_list_prices"] += 1
+        ctx.stats.warn(f"implausible list price not used: {problem}")
     if not page.in_stock:
         ctx.stats.counters["variants_out_of_stock"] += 1
         return

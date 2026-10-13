@@ -212,3 +212,48 @@ def test_a_spent_budget_stops_the_crawl():
     with pytest.raises(BudgetExhausted):
         list(getmobil.crawl(ctx))
     assert len(fake.requested) == 5
+
+
+def test_a_buybox_with_a_struck_through_price_gets_it_as_its_list_price():
+    url = f"{BASE}{CATALOG}/iphone-15-pro-max/apple-iphone-15-pro-max-256-gb-siyah-900105/"
+    result = parse("variant_strikethrough.html", url)
+    assert [(o.seller_id, o.is_buybox, o.price_tl, o.list_price_tl, o.promo_pct) for o in result.offers] == [
+        (7030, True, Decimal("51990.00"), Decimal("55990.00"), Decimal("7.14")),
+        # Alternative sellers show no earlier price of their own: the list price is the price.
+        (7031, False, Decimal("52490.00"), Decimal("52490.00"), Decimal("0.00")),
+    ]
+    assert result.list_price_problems == ()
+
+
+def test_without_a_struck_through_price_the_list_price_is_the_price():
+    offers = parse("variant_alternatives.html").offers
+    assert all((o.list_price_tl, o.promo_pct) == (o.price_tl, 0) for o in offers)
+    assert offers[0].payload["seller"]["strikethrough_price"] is None
+
+
+def test_a_struck_through_price_below_the_price_is_not_used():
+    url = f"{BASE}{CATALOG}/iphone-15-pro-max/apple-iphone-15-pro-max-256-gb-mavi-900106/"
+    result = parse("variant_strikethrough_below.html", url)
+    buybox = result.offers[0]
+    assert (buybox.seller_id, buybox.price_tl, buybox.list_price_tl, buybox.promo_pct) == (
+        7032,
+        Decimal("51990.00"),
+        Decimal("51990.00"),
+        0,
+    )
+    assert buybox.payload["seller"]["strikethrough_price"] == 5199  # kept raw in the payload
+    assert result.list_price_problems == ("getmobil:900106:7032: list price 5199 is below the price paid 51990",)
+
+
+def test_an_implausible_struck_through_price_is_counted_in_the_run():
+    fake = site(
+        **{
+            f"{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-900101/": page(
+                "getmobil/variant_strikethrough_below.html"
+            )
+        }
+    )
+    ctx = fake.context()
+    list(getmobil.crawl(ctx))
+    assert ctx.stats.counters["implausible_list_prices"] == 1
+    assert any(w.startswith("implausible list price not used: getmobil:900106:7032") for w in ctx.stats.warnings)

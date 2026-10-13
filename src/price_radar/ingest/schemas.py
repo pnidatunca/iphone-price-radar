@@ -5,10 +5,19 @@ are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}``, ``easycep:
 ``trendyol:{content_id}:{merchant_id}``; and the record carries the numeric seller id, the stock quantity, the SIM
 type, the SKU and its condition flags.
 
-Price: ``price_tl`` is what a buyer pays today. A site that shows a sticker price and takes an automatic basket
-promotion off it at checkout also fills two optional fields: ``list_price_tl`` (the sticker price) and ``promo_pct``
-(the promotion in percent of the sticker price). Where the shown price is the price paid (Getmobil, Easycep), both
-stay None.
+Prices mean the same on every platform:
+
+* ``price_tl`` is the price a buyer pays today for that offer (Trendyol: after the automatic basket promotion;
+  per-user coupons are ignored everywhere);
+* ``list_price_tl`` is the price before any temporary discount that the page itself shows for that offer: Trendyol's
+  ``sellingPrice``, Getmobil's struck-through price of the buybox offer (``priceInfo.strikethrough``; other sellers show
+  none), Easycep's ``basePrice``. When the page shows no separate earlier price, ``list_price_tl`` equals ``price_tl``;
+* ``promo_pct`` is the discount between the two, in percent of ``list_price_tl``, computed from them (0 without one).
+
+``list_price_and_promo`` applies the rule for the adapters, which always fill both fields. A shown earlier price below
+the price paid, or one that would mean a discount above ``MAX_PLAUSIBLE_PROMO`` percent, is not stored: the offer gets
+``list_price_tl = price_tl`` and ``promo_pct = 0`` and the adapter counts a warning. The two fields are optional in the
+record only so that offers stored before they existed still validate.
 
 Privacy (K12, K22): the record has no field for a seller's display name, slug, store link or legal details (legal
 name, tax number, registration number, e-mail, address), and the validator rejects a payload that carries one, so an
@@ -36,6 +45,8 @@ STORAGE_VALUES_GB = frozenset({16, 32, 64, 128, 256, 512, 1024, 2048})
 MAX_PRICE_TL = Decimal("1000000")  # sanity bound: a larger value is a parsing error (e.g. kuruş read as lira)
 CENTS = Decimal("0.01")
 PROMO_TOLERANCE = Decimal("0.01")  # promo_pct is rounded to two decimals
+MAX_PLAUSIBLE_PROMO = Decimal("50")  # a larger discount on an iPhone means the shown earlier price is wrong
+NO_PROMO = Decimal("0.00")
 # Fields whose change means the offer itself changed. Volatile payload details (seller score, delivery days,
 # popularity counters) stay out of the hash, so "store the payload only when the hash changes" (plan 7.4) still saves
 # space.
@@ -56,8 +67,9 @@ HASHED_FIELDS = (
     "stock_qty",
     "in_stock",
 )
-# Optional fields added after offers were first stored. They enter the hash only when set, so the hash of an offer
-# without them is unchanged. promo_pct is left out because it follows from price_tl and list_price_tl.
+# Added after offers were first stored: list_price_tl enters the hash only when it differs from price_tl (a shown
+# discount), so the hash of an offer without one is the same as before the field existed. promo_pct is left out
+# because it follows from price_tl and list_price_tl.
 OPTIONAL_HASHED_FIELDS = ("list_price_tl",)
 FORBIDDEN_KEY = re.compile(
     r"name|slug|(vendor|seller|store)_?title|store_?(link|url)|address|phone_?(number|no)|telephone|e_?mail"
@@ -159,6 +171,21 @@ class RawOffer(BaseModel):
                 raise ValueError(f"promo_pct {self.promo_pct} does not match the prices ({expected:.2f})")
 
 
+def list_price_and_promo(paid: Decimal, shown: Decimal | None) -> tuple[Decimal, Decimal, str | None]:
+    """``(list_price_tl, promo_pct, problem)`` for an offer whose page shows ``shown`` as its price before a temporary
+    discount, or None when it shows none. An implausible ``shown`` (below the price paid, or a discount above
+    ``MAX_PLAUSIBLE_PROMO`` percent) is not used: the result is ``(paid, 0)`` with the reason, for the adapter to warn.
+    """
+    if shown is None or shown == paid:
+        return paid, NO_PROMO, None
+    if not shown.is_finite() or shown < paid:
+        return paid, NO_PROMO, f"list price {shown} is below the price paid {paid}"
+    promo = ((shown - paid) / shown * 100).quantize(CENTS)
+    if promo > MAX_PLAUSIBLE_PROMO or shown > MAX_PRICE_TL:
+        return paid, NO_PROMO, f"list price {shown} would mean a {promo}% discount on {paid}"
+    return shown, promo, None
+
+
 def error_summary(err: Exception) -> str:
     """One line per failed field, short enough for the run summary."""
     if isinstance(err, ValidationError):
@@ -167,10 +194,14 @@ def error_summary(err: Exception) -> str:
 
 
 def payload_hash(offer: RawOffer) -> str:
-    """SHA-256 over the offer fields that matter for change detection: ``HASHED_FIELDS`` and the
-    ``OPTIONAL_HASHED_FIELDS`` that are set."""
+    """SHA-256 over the offer fields that matter for change detection: ``HASHED_FIELDS``, and ``list_price_tl`` when it
+    differs from ``price_tl``."""
     stable = {name: getattr(offer, name) for name in HASHED_FIELDS}
-    stable |= {name: getattr(offer, name) for name in OPTIONAL_HASHED_FIELDS if getattr(offer, name) is not None}
+    stable |= {
+        name: getattr(offer, name)
+        for name in OPTIONAL_HASHED_FIELDS
+        if getattr(offer, name) is not None and getattr(offer, name) != offer.price_tl
+    }
     text = json.dumps(stable, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

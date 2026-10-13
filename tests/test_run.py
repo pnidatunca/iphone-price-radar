@@ -68,6 +68,7 @@ def test_cli_writes_offers_and_a_summary(tmp_path):
         RawOffer.model_validate_json(line) for line in (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
     ]
     assert len(offers) == 7 and len({o.offer_key for o in offers}) == 7
+    assert all((o.list_price_tl, o.promo_pct) == (o.price_tl, 0) for o in offers)  # no struck-through prices here
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
     assert summary["stop_reason"] == "completed"
     assert (summary["offers"], summary["in_stock_offers"]) == (7, 7)
@@ -109,7 +110,7 @@ def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
     assert (summary["source"], summary["parser_version"], summary["stop_reason"]) == (
         "trendyol",
-        "trendyol-2",
+        "trendyol-3",
         "completed",
     )
     # Seven of the product pages answer 404 here, so only the iPhone 15 model page is known and read.
