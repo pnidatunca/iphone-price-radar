@@ -76,10 +76,10 @@ price.
 | Getmobil | ~805: 1 brand page, 74 listing pages, 1 sitemap, 689 variant pages, ~40 re-checks of ids that left the listing (assumption) | ~2.3 h (range ~1.9–2.7 h) |
 | Easycep | 6 listing pages + 0–30 unit pages for new ids | ~1–6 min |
 | Easycep, once | 169 unit pages to read the flags of the current SKUs | ~25–30 min |
-| Trendyol | ~1,030: 24 + 5 listing pages + ~843 refurbished and up to ~151 new product pages + robots.txt | ~45 min–1.6 h (estimate from 2.7 s per request, n=26; to be measured on a full run) |
+| Trendyol | ~1,070–1,110: 24 + 5 listing pages, ~21 model pages (page 1 only), ~843 refurbished and up to ~151 new product pages, the product pages only model pages show, robots.txt | ~50 min–1.7 h (estimate from 2.7 s per request, n=26; to be measured on a full run) |
 | TCMB | 1 | — |
 
-- About 810–840 requests a day for Getmobil and Easycep, and about 1,030 more once Trendyol joins; every source
+- About 810–840 requests a day for Getmobil and Easycep, and about 1,070–1,110 more once Trendyol joins; every source
   stays within its own 1,500-request budget. Getmobil gets a full pass every day and, since the sources run in parallel,
   sets the collection time.
 - Getmobil responses took 5.8–9.2 s (n=6). With the 2–3.5 s gap after each response, a request cycle is ~8.6–12.0 s,
@@ -130,6 +130,12 @@ Getmobil's RSC payload alone is 196–282 KB per page.
    otherwise importer-warranty phones would look like deals every day. The iPhone category shows 12 sponsored cards on
    each full page; in the archive its 5 pages listed 103 distinct products against a `data.total` of 151 (48 = 12 × 4
    fewer, no duplicates), so sponsored cards seem to take the place of listed products, which paging cannot reach.
+   Since 13 October the adapter also reads page 1 of the model page (`/{model}-cep-telefonu-x-c103498-a292-v{id}`,
+   every phone of one model, new and refurbished) of each model the iPhone category lists, about 21 in the archive.
+   The archived iPhone 13 model page showed 10 cards filed under "IOS Cep Telefonları", 9 of which the 5 category
+   pages did not (fetched a day apart, and several were misfiled refurbished phones), but its `data.total` was 71
+   against 36 cards on page 1, and robots.txt disallows `?pi=` there: for popular models the recovery stays partial.
+   An iPhone-category page filtered by model was not seen on the site and is not used.
 
 ## Crawling and privacy rules
 
@@ -182,10 +188,13 @@ older model is skipped before its product page is requested.
   the 843 total and the page drift are only partly measured; how many refurbished phones are filed outside the
   category; whether the seller list has a cap above 13; whether listing ids stay stable from day to day; whether
   `?merchantId=` alone selects the seller (the site's own links add `boutiqueId` and `sav`); and how the site reacts to
-  about 1,030 requests a day. To be measured in the first full run with new phones: the real number of products and
+  about 1,100 requests a day. To be measured in the first full run with new phones: the real number of products and
   offers in the iPhone category, the list of warranty types ("observed" in the run summary), the share of misfiled
-  refurbished phones, the most sellers on a new-phone page (12 other merchants on one page may be a cut list) and
-  whether the products hidden behind sponsored cards stay out of reach.
+  refurbished phones, the most sellers on a new-phone page (12 other merchants on one page may be a cut list), how
+  much of the sponsored-card gap the model pages close ("new_category_coverage" in the run summary) and how many model
+  pages show only part of their model; whether the model-page slug the adapter writes from the model name also works
+  for names the archive has no link for (the site's links were matched for iPhone 14 Plus, 15 and 15 Plus); and
+  whether an iPhone-category page filtered by model exists, which would hold only new phones.
 - **Other:** a DagsHub account; a Power BI Desktop → Neon test (Power BI Desktop is not installed yet); Easycep's terms
   of use, which load only in a browser and are still unread; the meaning of Easycep's SKU flags; Getmobil's offer
   lifecycle (no variant page was fetched twice). Redirect targets are now checked against robots.txt before they are

@@ -29,8 +29,8 @@ new phones.
 
 - Only public product and category pages are requested; paths disallowed by `robots.txt` are never requested.
 - Each source requests only a fixed list of URL forms. On Trendyol these are two category listings (refurbished Apple
-  phones and iPhones, with `?pi=` pages) and bare product pages; sorting, filters, search, seller pages, per-model
-  listings and internal APIs are refused in code.
+  phones and iPhones, with `?pi=` pages), the first page of iPhone model pages and bare product pages; sorting,
+  filters, search, seller pages, further model pages and internal APIs are refused in code.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
 - The crawler identifies itself honestly; its User-Agent links to the [notice for site owners](#for-site-owners).
 - No personal data is collected.
