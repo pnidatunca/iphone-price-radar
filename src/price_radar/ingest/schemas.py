@@ -175,8 +175,9 @@ def list_price_and_promo(paid: Decimal, shown: Decimal | None) -> tuple[Decimal,
     """``(list_price_tl, promo_pct, problem)`` for an offer whose page shows ``shown`` as its price before a temporary
     discount, or None when it shows none. An implausible ``shown`` (below the price paid, or a discount above
     ``MAX_PLAUSIBLE_PROMO`` percent) is not used: the result is ``(paid, 0)`` with the reason, for the adapter to warn.
+    A price paid that is not positive gets no discount either; RawOffer rejects the offer.
     """
-    if shown is None or shown == paid:
+    if shown is None or shown == paid or paid <= 0:
         return paid, NO_PROMO, None
     if not shown.is_finite() or shown < paid:
         return paid, NO_PROMO, f"list price {shown} is below the price paid {paid}"

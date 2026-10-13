@@ -295,6 +295,8 @@ def test_a_list_price_equal_to_the_price_hashes_like_none():
         ("24990", "2499", ("24990", "0.00", "list price 2499 is below the price paid 24990")),
         ("100", "300", ("100", "0.00", "list price 300 would mean a 66.67% discount on 100")),
         ("500000", "1000001", ("500000", "0.00", "list price 1000001 would mean a 50.00% discount on 500000")),
+        ("-5", "0", ("-5", "0.00", None)),  # no division by zero; RawOffer rejects the price itself
+        ("0", "100", ("0", "0.00", None)),
     ],
 )
 def test_the_list_price_rule(paid, shown, expected):
