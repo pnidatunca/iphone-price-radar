@@ -51,6 +51,8 @@ def trendyol_site() -> FakeSite:
         "/apple/iphone-15-ornek-urun-128-gb-siyah-ithalatci-garantili-p-900000108": page(
             "trendyol/product_new_importer.html"
         ),
+        "/iphone-15-cep-telefonu-x-c103498-a292-v9404": page("trendyol/model_listing_iphone_15.html"),
+        "/apple/iphone-15-ornek-urun-256-gb-mavi-p-900000111": page("trendyol/product_new_hidden.html"),
     }
     return FakeSite("https://www.trendyol.com", routes)
 
@@ -101,7 +103,7 @@ def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
         "trendyol:900000104:7010",
         "trendyol:900000104:7013",
     ]
-    assert len(offers) == 18  # 3 refurbished, 2 + 13 new
+    assert len(offers) == 19  # 3 refurbished, 2 + 13 new from the category, 1 new from the iPhone 15 model page
     assert all(o.list_price_tl >= o.price_tl and o.promo_pct is not None for o in offers)
     assert all('"list_price_tl":' in line and '"promo_pct":' in line for line in lines)
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
@@ -110,17 +112,26 @@ def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
         "trendyol-2",
         "completed",
     )
-    assert summary["pages_fetched"] == {"listing": 4, "product": 10}  # seven of the product pages answer 404 here
+    # Seven of the product pages answer 404 here, so only the iPhone 15 model page is known and read.
+    assert summary["pages_fetched"] == {"listing": 4, "model": 1, "product": 11}
     counters = summary["counters"]
     assert (counters["refurbished_products_discovered"], counters["new_products_discovered"]) == (35, 6)
     assert (counters["refurbished_pages_requested"], counters["new_pages_requested"]) == (5, 5)
-    assert (counters["refurbished_offers"], counters["new_offers"]) == (3, 15)
+    assert (counters["refurbished_offers"], counters["new_offers"]) == (3, 16)
+    assert (counters["model_listings_requested"], counters["model_products_discovered"]) == (1, 1)
     assert "products_not_refurbished" not in counters
     assert summary["observed"] == {
-        "warranty_types_new": {"Apple Türkiye Garantili": 1, "İthalatçı Garantili": 1},
+        "warranty_types_new": {"Apple Türkiye Garantili": 2, "İthalatçı Garantili": 1},
         "warranty_types_refurbished": {"Yenilenmiş Ürün (12 Ay Garanti)": 1},
     }
     assert summary["discovery"]["products_seen"] == 41
+    assert summary["discovery"]["new_category_coverage"] == {
+        "data_total": 38,
+        "seen_on_category_pages": 26,
+        "added_by_model_pages": 1,
+        "added_by_model_pages_and_new": 1,
+        "remaining_gap": 11,
+    }
     markdown = capsys.readouterr().out
     assert markdown.startswith("### Collection run: trendyol")
     assert "Decoy Seller" not in markdown and "@example.com" not in markdown

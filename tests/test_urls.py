@@ -131,6 +131,7 @@ def test_easycep_builders_only_produce_allowed_urls():
 TY = "https://www.trendyol.com"
 TY_CATEGORY = f"{TY}/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
 TY_IPHONE = f"{TY}/iphone-ios-cep-telefonlari-x-c164462"  # new phones (and some misfiled refurbished ones)
+TY_MODEL = f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v613184"  # every iPhone 13, new and refurbished
 TY_PRODUCT = f"{TY}/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101"
 
 
@@ -142,6 +143,8 @@ TY_PRODUCT = f"{TY}/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p
         (f"{TY_CATEGORY}?pi=24", "listing"),
         (TY_IPHONE, "listing"),
         (f"{TY_IPHONE}?pi=5", "listing"),
+        (TY_MODEL, "model"),
+        (f"{TY}/iphone-15-pro-max-cep-telefonu-x-c103498-a292-v1218522", "model"),
         (TY_PRODUCT, "product"),
         (f"{TY}/apple/iphone-13-pembe-128gb-xyz1tu-a-ornek-a-kalite-p-1200000001", "product"),
     ],
@@ -158,8 +161,13 @@ def test_trendyol_allows_its_page_forms(url, form):
         f"{TY_CATEGORY}?q=iphone",
         f"{TY_CATEGORY}?pi=0",
         f"{TY_CATEGORY}/",
-        f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v613184?pi=2",  # per-model listing: robots.txt disallows ?pi=
-        f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v613184",
+        f"{TY_MODEL}?pi=2",  # model pages: page 1 only, robots.txt disallows ?pi= there
+        f"{TY_MODEL}?sst=PRICE_BY_ASC",
+        f"{TY_MODEL}/",
+        f"{TY}/iphone-ios-cep-telefonlari-x-c164462-a292-v613184",  # a combined form the site was not seen to use
+        f"{TY}/samsung-galaxy-s24-cep-telefonu-x-c103498-a292-v613184",
+        f"{TY}/iphone-13-cep-telefonu-x-c103498-a292-v0",
+        f"{TY}/iphone-13-cep-telefonu-x-c103498-a348-v1",  # another attribute (colour)
         f"{TY_IPHONE}?sst=PRICE_BY_ASC",
         f"{TY_IPHONE}?pi=2&wc=164462",
         f"{TY_IPHONE}?q=iphone",
@@ -188,6 +196,9 @@ def test_trendyol_builders_only_produce_allowed_urls():
     assert trendyol.listing_url("refurbished", 3) == f"{TY_CATEGORY}?pi=3"
     assert trendyol.listing_url("new", 1) == TY_IPHONE
     assert trendyol.listing_url("new", 2) == f"{TY_IPHONE}?pi=2"
+    assert trendyol.model_url(613184, "iPhone 13") == TY_MODEL
+    with pytest.raises(UrlNotAllowed):
+        trendyol.model_url(613184, "Galaxy S24")
     card_path = "/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101?boutiqueId=7&merchantId=7001"
     assert trendyol.product_url(card_path) == TY_PRODUCT
     assert trendyol.product_url(f"{TY_PRODUCT}#yorumlar") == TY_PRODUCT

@@ -142,6 +142,7 @@ def test_trendyol_rules_allow_every_url_the_adapter_requests_or_builds():
     for category in trendyol.CATEGORY_PATHS:  # the refurbished and the iPhone category
         for number in (1, 2, 5, 24):
             assert is_allowed(rules, trendyol_path(trendyol.listing_url(category, number))), (category, number)
+    assert is_allowed(rules, trendyol_path(trendyol.model_url(613184, "iPhone 13")))
     product = trendyol.product_url("/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104?boutiqueId=7&merchantId=7")
     assert is_allowed(rules, trendyol_path(product))
     assert is_allowed(rules, trendyol_path(trendyol.offer_url(product, 1234567)))
@@ -150,7 +151,7 @@ def test_trendyol_rules_allow_every_url_the_adapter_requests_or_builds():
 @pytest.mark.parametrize(
     "path",
     [
-        "/iphone-13-cep-telefonu-x-c103498-a292-v613184?pi=2",  # per-model listing pages
+        "/iphone-13-cep-telefonu-x-c103498-a292-v613184?pi=2",  # model pages after page 1
         "/iphone-ios-cep-telefonlari-x-c164462?sst=PRICE_BY_ASC",
         "/iphone-ios-cep-telefonlari-x-c164462?pi=2&wc=164462",
         "/apple-yenilenmis-cep-telefonu-x-b101470-c109461?q=iphone",

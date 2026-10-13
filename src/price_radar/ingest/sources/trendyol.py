@@ -21,6 +21,17 @@ organic cards of each category are compared with its ``data.total``; a gap is re
 carries ``boutiqueId`` and ``merchantId``, which are dropped (the product page lists every merchant). Cards whose title
 names a model outside the scope are not requested (decision K21).
 
+Model pages (owner's decision of 13 October 2026). On the iPhone category 12 sponsored cards take the place of
+listed products on every full page, so about a third of its products never appear on its pages. To recover them,
+the adapter reads page 1 of the model page of every in-scope model whose products the iPhone category listed:
+``/{model}-cep-telefonu-x-c103498-a292-v{id}``, the "Cep Telefonu" category filtered by the "Cep Telefonu Modeli"
+attribute (292), the form the site links to itself. The model value id and name come from the product pages already
+read. The model page holds new and refurbished phones of that model; robots.txt disallows ``?pi=`` there, so only
+page 1 is read, and a model page whose ``data.total`` is larger than what it shows is reported as incomplete. Its
+cards join the same set of content ids, so every product page is still requested once. A combined iPhone-category
+and model form was not seen on the site and is not used. If robots.txt disallows the model pages, none is requested
+and the run summary says so.
+
 Classification. A product counts as refurbished when its web category is the refurbished one (109461), its warranty
 type says "Yenilenmiş", or its title says "Yenilenmiş" or carries an A/B/C "Kalite" grade; anything else is new. The
 card's category is not trusted: it decides nothing.
@@ -90,12 +101,15 @@ HOST = "www.trendyol.com"
 BASE_URL = f"https://{HOST}"
 REFURBISHED = "refurbished"
 NEW = "new"
+MODEL = "model"  # a card first seen on a model page
 # The categories read, in this order. A product is filed under the category whose listing showed it first.
 CATEGORY_PATHS = {
     REFURBISHED: "/apple-yenilenmis-cep-telefonu-x-b101470-c109461",  # "Apple Yenilenmiş Cep Telefonu"
     NEW: "/iphone-ios-cep-telefonlari-x-c164462",  # "iPhone IOS Cep Telefonları"
 }
 REFURBISHED_CATEGORY = 109461  # web category "Yenilenmiş Cep Telefonu"
+PHONE_CATEGORY = 103498  # "Cep Telefonu": every phone, new and refurbished; the category of the model pages
+MODEL_ATTRIBUTE_ID = 292  # "Cep Telefonu Modeli"
 PAGE_SIZE = 36
 MAX_LISTING_PAGES = 100  # 3,600 cards a category, about four times the 843 of Phase 0; a larger total is not followed
 OTHER_MERCHANTS_SHOWN = 12  # the most other merchants a product page was seen to embed (13 sellers in all)
@@ -103,10 +117,13 @@ NEW_CONDITION = "Sıfır"
 LISTING_STATE = "__single-search-result__PROPS"
 PRODUCT_STATE = "__envoy-mobile__SHARED_PROPS"
 _PRODUCT_PATH = rf"/apple/{urls.SLUG}-p-\d+"
-# Only these two forms are ever requested. Per-model listings (whose ?pi= robots.txt disallows), /saticilar, /sr,
-# sorting (sst=), search (?q=) and the apigw API links in the page data all fall outside them.
+_MODEL_PATH = rf"/iphone(?:-[a-z0-9]+)*-cep-telefonu-x-c{PHONE_CATEGORY}-a{MODEL_ATTRIBUTE_ID}-v[1-9][0-9]*"
+# Only these three forms are ever requested: the two category listings with ?pi=, page 1 of an iPhone model page (no
+# query: robots.txt disallows ?pi= on model pages) and product pages. Sorting (sst=), filters, search (?q=), /sr,
+# /saticilar and the apigw API links in the page data all fall outside them.
 URL_FORMS = (
     urls.UrlForm("listing", re.compile("(?:" + "|".join(map(re.escape, CATEGORY_PATHS.values())) + ")"), ("pi",)),
+    urls.UrlForm("model", re.compile(_MODEL_PATH)),
     urls.UrlForm("product", re.compile(_PRODUCT_PATH)),
 )
 # The link that opens one merchant's offer, as the site's own "other sellers" links do. Built, never requested.
@@ -161,7 +178,8 @@ class ParseError(ValueError):
 @dataclass(frozen=True)
 class ListingCard:
     """A product card of a category listing. ``url`` is the bare product URL; ``title`` is used only to skip
-    out-of-scope models before their page is requested; ``category`` is the listing that showed it first."""
+    out-of-scope models before their page is requested; ``category`` is the listing that showed it first
+    (``REFURBISHED``, ``NEW`` or ``MODEL``)."""
 
     content_id: int
     url: str
@@ -195,6 +213,7 @@ class ProductPage:
     seller_list_at_cap: bool = False  # as many other merchants as a page was seen to show: the list may be cut
     rejected: tuple[str, ...] = ()  # offers that failed validation, with the reason
     warnings: tuple[str, ...] = ()
+    model_attribute: tuple[int, str] | None = None  # "Cep Telefonu Modeli" value id and name, for the model page
 
     @property
     def kind(self) -> str:
@@ -223,6 +242,16 @@ class _Seller:
 def check_url(url: str) -> str:
     """Name of the allowed form of ``url`` ("listing" or "product"); raises ``urls.UrlNotAllowed``."""
     return urls.check(url, HOST, URL_FORMS)
+
+
+def model_url(value_id: int, name: str) -> str:
+    """Page 1 of the model page of a "Cep Telefonu Modeli" value: (1218519, "iPhone 15") gives
+    ``https://www.trendyol.com/iphone-15-cep-telefonu-x-c103498-a292-v1218519``, as the site's own links write it."""
+    slug = re.sub(r"[^a-z0-9]+", "-", fold(name)).strip("-")
+    url = f"{BASE_URL}/{slug}-cep-telefonu-x-c{PHONE_CATEGORY}-a{MODEL_ATTRIBUTE_ID}-v{value_id}"
+    if check_url(url) != "model":
+        raise urls.UrlNotAllowed(f"{url}: not a model page")
+    return url
 
 
 def listing_url(category: str, page: int) -> str:
@@ -362,6 +391,7 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
             out_of_stock,
             seller_list_at_cap=at_cap,
             warnings=tuple(warnings),
+            model_attribute=model_attribute(product),
         )
 
     product_page = url.split("?", 1)[0]
@@ -412,6 +442,7 @@ def parse_product_page(html: str, url: str, *, fetched_at: datetime, snapshot_da
         at_cap,
         tuple(build.rejected),
         tuple(warnings),
+        model_attribute(product),
     )
 
 
@@ -424,6 +455,17 @@ def attributes(product: dict[str, Any]) -> dict[str, str]:
         if isinstance(key, dict) and isinstance(value, dict) and isinstance(key.get("name"), str):
             found.setdefault(key["name"], clean_text(value.get("name")))
     return found
+
+
+def model_attribute(product: dict[str, Any]) -> tuple[int, str] | None:
+    """The value id and name of the "Cep Telefonu Modeli" attribute, e.g. (613184, "iPhone 13"); None without it."""
+    for entry in product.get("attributes") or []:
+        key = entry.get("key") if isinstance(entry, dict) else None
+        value = entry.get("value") if isinstance(entry, dict) else None
+        if isinstance(key, dict) and isinstance(value, dict) and key.get("name") == MODEL_ATTRIBUTE:
+            value_id, name = as_int(value.get("id")), clean_text(value.get("name"))
+            return (value_id, name) if value_id and name else None
+    return None
 
 
 def refurbished_reasons(product: dict[str, Any], attrs: dict[str, str], title: str) -> tuple[str, ...]:
@@ -527,37 +569,62 @@ class _OfferBuilder:
         self.offers.append(offer)
 
 
+@dataclass
+class _Limit:
+    """Lets a card's product page be requested unless its title names an out-of-scope model or the page limit
+    (``--max-variants``) is reached; counts what it holds back."""
+
+    ctx: CrawlContext
+    fetched: int = 0
+
+    def allows(self, card: ListingCard) -> bool:
+        title_model = model_in_text(card.title)
+        if title_model is not None and not self.ctx.scope.includes(title_model):
+            self.ctx.stats.counters["cards_out_of_scope"] += 1  # never requested (decision K21)
+            return False
+        if self.ctx.max_variants is not None and self.fetched >= self.ctx.max_variants:
+            self.ctx.stats.counters["products_over_limit"] += 1
+            return False
+        self.fetched += 1
+        return True
+
+
 def crawl(ctx: CrawlContext) -> Iterator[RawOffer]:
-    """Read both category listings, then yield the offers of each in-scope product page they list.
+    """Read both category listings and yield the offers of each in-scope product page they list; then read page 1 of
+    the model page of each in-scope model the iPhone category listed, and yield the offers of the products only the
+    model pages showed.
 
     The listings are read in one pass before any product page, so their pages are read close together (less drift).
     """
-    cards = _discover(ctx)
-    fetched = 0
-    for card in cards.values():
-        title_model = model_in_text(card.title)
-        if title_model is not None and not ctx.scope.includes(title_model):
-            ctx.stats.counters["cards_out_of_scope"] += 1  # never requested (decision K21)
-            continue
-        if ctx.max_variants is not None and fetched >= ctx.max_variants:
-            ctx.stats.counters["products_over_limit"] += 1
-            continue
-        fetched += 1
-        yield from _product_offers(ctx, card)
+    found, listed_in_new = _discover(ctx)
+    models: dict[int, str] = {}  # "Cep Telefonu Modeli" value id -> name, from products the iPhone category listed
+    limit = _Limit(ctx)
+    try:
+        for card in list(found.values()):
+            if limit.allows(card):
+                yield from _product_offers(ctx, card, models if card.content_id in listed_in_new else None)
+        for card in _read_model_listings(ctx, models, found):
+            if limit.allows(card):
+                yield from _product_offers(ctx, card)
+    finally:
+        _record_coverage(ctx)
 
 
-def _discover(ctx: CrawlContext) -> dict[int, ListingCard]:
+def _discover(ctx: CrawlContext) -> tuple[dict[int, ListingCard], set[int]]:
     """Distinct Apple cards of both categories by content id, in listing order, each with the category that showed
-    it first."""
+    it first, and the ids the iPhone category listed."""
     found: dict[int, ListingCard] = {}
-    categories = {category: _read_category(ctx, category, found) for category in CATEGORY_PATHS}
+    categories: dict[str, dict[str, Any]] = {}
+    listed: dict[str, set[int]] = {}
+    for category in CATEGORY_PATHS:
+        categories[category], listed[category] = _read_category(ctx, category, found)
     ctx.stats.discovery.update(categories=categories, products_seen=len(found))
     ctx.stats.counters["variants_discovered"] += len(found)  # a Trendyol product is the counterpart of a variant
-    return found
+    return found, listed[NEW]
 
 
-def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCard]) -> dict[str, Any]:
-    """Read one category's listing into ``found`` and return what the reading saw."""
+def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCard]) -> tuple[dict[str, Any], set[int]]:
+    """Read one category's listing into ``found``; returns what the reading saw and the ids it listed."""
     organic: set[int] = set()
     cards: dict[int, ListingCard] = {}
     totals: set[int] = set()
@@ -566,7 +633,7 @@ def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCar
     more = True
     while more:
         number += 1
-        page = _fetch_listing(ctx, category, number)
+        page = _fetch_listing(ctx, listing_url(category, number), "listing", number)
         if page is None:
             failed += 1
             more = total is not None and number * PAGE_SIZE < total  # without page 1 there is no total to go by
@@ -597,7 +664,7 @@ def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCar
             f" ({organic_seen} cards, {ads} sponsored, {failed} failed pages); failed pages, ranking drift and"
             " sponsored cards leave products out"
         )
-    return {
+    record = {
         "listing_totals": sorted(totals),
         "listing_pages": number,
         "listing_pages_failed": failed,
@@ -610,20 +677,92 @@ def _read_category(ctx: CrawlContext, category: str, found: dict[int, ListingCar
         "products_seen": len(cards),
         "listed_in_an_earlier_category": listed_before,
     }
+    return record, set(cards)
 
 
-def _fetch_listing(ctx: CrawlContext, category: str, number: int) -> ListingPage | None:
-    url = listing_url(category, number)
-    response = ctx.get(url, "listing")
+def _read_model_listings(ctx: CrawlContext, models: dict[int, str], found: dict[int, ListingCard]) -> list[ListingCard]:
+    """Page 1 of the model page of each model in ``models``; the Apple cards not seen before join ``found`` and are
+    returned."""
+    counters = ctx.stats.counters
+    added: list[ListingCard] = []
+    records: list[dict[str, Any]] = []
+    for value_id, name in models.items():
+        try:
+            url = model_url(value_id, name)
+        except urls.UrlNotAllowed as err:
+            ctx.stats.warn(f"no model page for {name!r}: {err}")
+            continue
+        if not ctx.client.allowed(url):
+            counters["model_listings_refused"] += 1
+            ctx.stats.refuse("model", url, "robots.txt")
+            ctx.stats.warn(
+                "robots.txt disallows the model pages: the products that sponsored cards hide in the iPhone category"
+                " are not recovered in this run"
+            )
+            break
+        counters["model_listings_requested"] += 1
+        page = _fetch_listing(ctx, url, "model")
+        if page is None:
+            records.append({"model": name, "read": False})
+            continue
+        shown = len(set(page.organic))
+        new_cards = [card for card in page.cards if card.content_id not in found]
+        for card in new_cards:
+            found[card.content_id] = dataclasses.replace(card, category=MODEL)
+            added.append(found[card.content_id])
+        incomplete = page.total > shown
+        if incomplete:
+            counters["model_listings_incomplete"] += 1
+            ctx.stats.warn(
+                f"model page of {name}: data.total is {page.total} but page 1 shows {shown} products and ?pi= is"
+                " disallowed there; the model may be incomplete"
+            )
+        records.append(
+            {
+                "model": name,
+                "read": True,
+                "total": page.total,
+                "shown": shown,
+                "ads_skipped": page.ads,
+                "products_added": len({card.content_id for card in new_cards}),
+                "incomplete": incomplete,
+            }
+        )
+    if added:
+        counters[f"{MODEL}_products_discovered"] += len(added)
+        counters["variants_discovered"] += len(added)
+    ctx.stats.discovery["model_listings"] = {"models": records, "products_added": len(added)}
+    return added
+
+
+def _record_coverage(ctx: CrawlContext) -> None:
+    """How much of the iPhone category's data.total the run saw: on its own pages, and added by the model pages."""
+    new = ctx.stats.discovery.get("categories", {}).get(NEW)
+    if not new or not new["listing_totals"]:
+        return
+    total = new["listing_totals"][-1]
+    counters = ctx.stats.counters
+    added_new = counters[f"{NEW}_in_{MODEL}_listing"]
+    ctx.stats.discovery["new_category_coverage"] = {
+        "data_total": total,
+        "seen_on_category_pages": new["distinct_cards"],
+        "added_by_model_pages": counters[f"{MODEL}_products_discovered"],
+        "added_by_model_pages_and_new": added_new,
+        "remaining_gap": max(0, total - new["distinct_cards"] - added_new),
+    }
+
+
+def _fetch_listing(ctx: CrawlContext, url: str, kind: str, number: int = 1) -> ListingPage | None:
+    response = ctx.get(url, kind)
     if response is None:
         return None
     if response.status_code != 200:
-        ctx.stats.fail("listing", url, f"HTTP {response.status_code}")
+        ctx.stats.fail(kind, url, f"HTTP {response.status_code}")
         return None
     try:
         page = parse_listing_page(response.text)
     except ParseError as err:
-        ctx.stats.fail("listing", url, str(err))
+        ctx.stats.fail(kind, url, str(err))
         return None
     for path, reason in page.refused:
         ctx.stats.refuse("product", path, reason)
@@ -634,7 +773,8 @@ def _fetch_listing(ctx: CrawlContext, category: str, number: int) -> ListingPage
     return page
 
 
-def _product_offers(ctx: CrawlContext, card: ListingCard) -> Iterator[RawOffer]:
+def _product_offers(ctx: CrawlContext, card: ListingCard, models: dict[int, str] | None = None) -> Iterator[RawOffer]:
+    """Yield the offers of one card's product page; with ``models``, also note the page's model for its model page."""
     counters = ctx.stats.counters
     counters[f"{card.category}_pages_requested"] += 1
     response = ctx.get(card.url, "product")
@@ -665,6 +805,8 @@ def _product_offers(ctx: CrawlContext, card: ListingCard) -> Iterator[RawOffer]:
     if not ctx.scope.includes(page.model):
         counters["products_out_of_scope"] += 1
         return
+    if models is not None and page.model_attribute is not None:
+        models.setdefault(*page.model_attribute)
     kind = page.kind
     counters[f"{kind}_products"] += 1
     if page.warranty is not None:

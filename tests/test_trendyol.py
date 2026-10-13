@@ -24,6 +24,17 @@ N2 = "/apple/iphone-15-ornek-urun-128-gb-siyah-ithalatci-garantili-p-900000108"
 N3 = "/apple/iphone-14-128-gb-mavi-a-grade-ornek-urun-p-900000109"
 N4 = "/apple/iphone-16-ornek-urun-256-gb-beyaz-p-900000110"
 P5 = "/apple/iphone-12-mini-siyah-64gb-xyz1tu-a-ornek-outlet-c-kalite-p-900000105"  # refurbished, filed under iPhone
+# Shown only by the iPhone 15 model page: sponsored cards took its place in the iPhone category.
+N5 = "/apple/iphone-15-ornek-urun-256-gb-mavi-p-900000111"
+# Page 1 of the model pages of the models the iPhone category listed, in the order the crawl meets them.
+MODEL_PAGES = {
+    "/iphone-14-pro-cep-telefonu-x-c103498-a292-v9402": "model_listing_iphone_14_pro.html",
+    "/iphone-15-cep-telefonu-x-c103498-a292-v9404": "model_listing_iphone_15.html",
+    "/iphone-14-cep-telefonu-x-c103498-a292-v9405": "model_listing_iphone_14.html",
+    "/iphone-16-cep-telefonu-x-c103498-a292-v9406": "model_listing_iphone_16.html",
+    "/iphone-12-mini-cep-telefonu-x-c103498-a292-v9407": "model_listing_iphone_12_mini.html",
+}
+M15 = "/iphone-15-cep-telefonu-x-c103498-a292-v9404"
 PAGES = {
     P1: "product_buybox_others.html",
     P2: "product_condition_conflict.html",
@@ -34,6 +45,7 @@ PAGES = {
     N3: "product_new_grade.html",
     N4: "product_new_no_warranty.html",
     P5: "product_misfiled.html",
+    N5: "product_new_hidden.html",
 }
 # A few rules of Trendyol's robots.txt that concern the adapter's forms (all of them: tests/test_robots.py).
 ROBOTS = (
@@ -324,7 +336,8 @@ def site(**overrides) -> FakeSite:
         f"{REFURBISHED}?pi=2": page("trendyol/refurbished_listing_p2.html"),
         NEW: page("trendyol/new_listing_p1.html"),
         f"{NEW}?pi=2": page("trendyol/new_listing_p2.html"),
-    } | {path: page(f"trendyol/{name}") for path, name in PAGES.items()}
+    }
+    routes |= {path: page(f"trendyol/{name}") for path, name in (PAGES | MODEL_PAGES).items()}
     return FakeSite(BASE, routes | overrides)
 
 
@@ -341,11 +354,17 @@ def test_crawl_reads_both_categories_and_collects_new_and_refurbished_offers():
         "trendyol:900000102:7007",
     ]
     assert keys[5:7] == ["trendyol:900000104:7010", "trendyol:900000104:7013"]
-    assert keys[-3:] == ["trendyol:900000109:7015", "trendyol:900000110:7016", "trendyol:900000105:7011"]
-    assert len(offers) == 23 and len(set(keys)) == 23
-    assert sum(o.condition_raw == "Sıfır" for o in offers) == 17
+    assert keys[-4:] == [
+        "trendyol:900000109:7015",
+        "trendyol:900000110:7016",
+        "trendyol:900000105:7011",
+        "trendyol:900000111:7017",  # found on the iPhone 15 model page only
+    ]
+    assert len(offers) == 24 and len(set(keys)) == 24
+    assert sum(o.condition_raw == "Sıfır" for o in offers) == 18
     # Each category is read until N * 36 >= data.total; P2 is listed in both but requested once; the 31 cards of
-    # older models are never requested.
+    # older models are never requested. Then page 1 of the model page of each model the iPhone category listed, and
+    # the one product only a model page showed.
     assert fake.requested == [
         "/robots.txt",
         REFURBISHED,
@@ -362,10 +381,12 @@ def test_crawl_reads_both_categories_and_collects_new_and_refurbished_offers():
         N3,
         N4,
         P5,
+        *MODEL_PAGES,
+        N5,
     ]
     stats = ctx.stats
     assert dict(stats.counters) == {
-        "variants_discovered": 41,
+        "variants_discovered": 42,
         "refurbished_products_discovered": 35,
         "new_products_discovered": 6,
         "products_in_both_listings": 1,
@@ -373,11 +394,15 @@ def test_crawl_reads_both_categories_and_collects_new_and_refurbished_offers():
         "cards_out_of_scope": 31,
         "refurbished_pages_requested": 5,
         "new_pages_requested": 5,
+        "model_listings_requested": 5,
+        "model_products_discovered": 1,
+        "model_pages_requested": 1,
         "refurbished_products": 4,
-        "new_products": 4,
+        "new_products": 5,
         "refurbished_offers": 6,
-        "new_offers": 17,
+        "new_offers": 18,
         "refurbished_in_new_listing": 1,
+        "new_in_model_listing": 1,
         "refurbished_outside_category": 1,
         "products_out_of_scope": 1,
         "products_out_of_stock": 1,
@@ -389,9 +414,10 @@ def test_crawl_reads_both_categories_and_collects_new_and_refurbished_offers():
     }
     assert stats.observed == {
         "warranty_types_refurbished": {"Yenilenmiş Ürün (12 Ay Garanti)": 3},
-        "warranty_types_new": {"Apple Türkiye Garantili": 2, "İthalatçı Garantili": 1},
+        "warranty_types_new": {"Apple Türkiye Garantili": 3, "İthalatçı Garantili": 1},
     }
-    assert stats.sellers_per_variant == {3: 1, 2: 2, 13: 1, 1: 3}
+    assert stats.sellers_per_variant == {3: 1, 2: 2, 13: 1, 1: 4}
+    assert stats.responses == {"listing": 4, "product": 11, "model": 5}
     assert stats.refusal_count == 1 and stats.failure_count == 0
     assert all(o.snapshot_date.isoformat() == "2026-10-12" for o in offers)
 
@@ -429,6 +455,15 @@ def test_discovery_is_reported_per_category():
             },
         },
         "products_seen": 41,
+        # Without product pages no model is known, so no model page is read.
+        "model_listings": {"models": [], "products_added": 0},
+        "new_category_coverage": {
+            "data_total": 38,
+            "seen_on_category_pages": 26,
+            "added_by_model_pages": 0,
+            "added_by_model_pages_and_new": 0,
+            "remaining_gap": 12,
+        },
     }
     warnings = [w for w in ctx.stats.warnings if "data.total" in w]
     assert [w.split(":")[0] for w in warnings] == ["refurbished listing", "new listing"]
@@ -484,8 +519,10 @@ def test_a_failed_category_does_not_stop_the_other():
         "900000109",
         "900000110",
         "900000105",
+        "900000111",
     }
     assert ctx.stats.counters["new_products_discovered"] == 7  # P2 now counts as found in the iPhone category
+    assert ctx.stats.counters["model_products_discovered"] == 2  # the model pages also show P7, now unseen
 
 
 def test_a_listing_that_changed_its_markup_is_reported():
@@ -511,3 +548,117 @@ def test_a_spent_budget_stops_the_crawl():
     with pytest.raises(BudgetExhausted):
         list(trendyol.crawl(ctx))
     assert fake.requested == ["/robots.txt", REFURBISHED, f"{REFURBISHED}?pi=2", NEW, f"{NEW}?pi=2", P1]
+
+
+def test_the_product_page_gives_the_model_attribute_for_the_model_page():
+    assert parse(N1).model_attribute == (9404, "iPhone 15")
+    assert parse(P3).model_attribute == (9403, "iPhone 12")  # also on an out-of-stock page
+    assert trendyol.model_url(9404, "iPhone 15") == f"{BASE}{M15}"
+    assert trendyol.model_url(9407, "iPhone 12 Mini") == f"{BASE}/iphone-12-mini-cep-telefonu-x-c103498-a292-v9407"
+
+
+def test_model_pages_add_the_products_the_iphone_category_hides():
+    ctx = site().context()
+    offers = list(trendyol.crawl(ctx))
+    hidden = [o for o in offers if o.offer_key.startswith("trendyol:900000111:")]
+    assert [(o.condition_raw, o.warranty_raw) for o in hidden] == [("Sıfır", "Apple Türkiye Garantili")]
+    assert ctx.stats.discovery["model_listings"] == {
+        "models": [
+            {
+                "model": "iPhone 14 Pro",
+                "read": True,
+                "total": 1,
+                "shown": 1,
+                "ads_skipped": 0,
+                "products_added": 0,
+                "incomplete": False,
+            },
+            {
+                "model": "iPhone 15",
+                "read": True,
+                "total": 3,
+                "shown": 3,
+                "ads_skipped": 0,
+                "products_added": 1,
+                "incomplete": False,
+            },
+            {
+                "model": "iPhone 14",
+                "read": True,
+                "total": 2,
+                "shown": 2,
+                "ads_skipped": 0,
+                "products_added": 0,
+                "incomplete": False,
+            },
+            {
+                "model": "iPhone 16",
+                "read": True,
+                "total": 1,
+                "shown": 1,
+                "ads_skipped": 0,
+                "products_added": 0,
+                "incomplete": False,
+            },
+            {
+                "model": "iPhone 12 Mini",
+                "read": True,
+                "total": 1,
+                "shown": 1,
+                "ads_skipped": 0,
+                "products_added": 0,
+                "incomplete": False,
+            },
+        ],
+        "products_added": 1,
+    }
+    assert ctx.stats.discovery["new_category_coverage"] == {
+        "data_total": 38,
+        "seen_on_category_pages": 26,
+        "added_by_model_pages": 1,
+        "added_by_model_pages_and_new": 1,
+        "remaining_gap": 11,
+    }
+
+
+def test_a_product_on_a_category_page_and_a_model_page_is_requested_once():
+    fake = site()
+    list(trendyol.crawl(fake.context()))
+    for path in (N1, N2, P2, P5):  # listed by the iPhone category and shown again by a model page
+        assert fake.requested.count(path) == 1, path
+    assert fake.requested.count(P7) == 1  # the refurbished listing and the iPhone 14 model page
+
+
+def test_only_in_scope_models_the_iphone_category_listed_get_a_model_page():
+    fake = site()
+    list(trendyol.crawl(fake.context()))
+    model_pages = [path for path in fake.requested if "-x-c103498-" in path]
+    assert model_pages == list(MODEL_PAGES)  # no iPhone 13 (refurbished listing only), no iPhone 8 Plus (scope)
+
+
+def test_an_incomplete_model_page_is_reported():
+    fake = site(**{M15: listing(99, 1, source="model_listing_iphone_15.html")})
+    ctx = fake.context()
+    list(trendyol.crawl(ctx))
+    assert ctx.stats.counters["model_listings_incomplete"] == 1
+    assert (
+        "model page of iPhone 15: data.total is 99 but page 1 shows 3 products and ?pi= is disallowed there;"
+        " the model may be incomplete"
+    ) in ctx.stats.warnings
+    assert not any(path.startswith(f"{M15}?") for path in fake.requested)
+
+
+def test_model_pages_disallowed_by_robots_are_not_used_and_reported():
+    fake = site(**{"/robots.txt": httpx.Response(200, text=ROBOTS + "Disallow: /*-a292-v\n")})
+    ctx = fake.context()
+    offers = list(trendyol.crawl(ctx))
+    assert not any("-x-c103498-" in path for path in fake.requested)
+    assert N5 not in fake.requested and len(offers) == 23
+    assert ctx.stats.counters["model_listings_refused"] == 1
+    assert ctx.stats.refusals[-1] == {
+        "kind": "model",
+        "url": f"{BASE}/iphone-14-pro-cep-telefonu-x-c103498-a292-v9402",
+        "reason": "robots.txt",
+    }
+    assert any(w.startswith("robots.txt disallows the model pages") for w in ctx.stats.warnings)
+    assert ctx.stats.discovery["new_category_coverage"]["remaining_gap"] == 12
