@@ -28,7 +28,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [getmobil, easycep]
+        # Easycep was dropped on 14.10.2026: its terms of use forbid crawlers and bulk access to its listings.
+        source: [getmobil]
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
@@ -47,17 +48,11 @@ jobs:
         if: github.event_name == 'schedule'
         continue-on-error: true
         run: echo "skip=$(uv run python -m price_radar.storage.landing loaded-today --source "$SOURCE")" >> "$GITHUB_OUTPUT"
-      - name: Known Easycep ids
-        if: matrix.source == 'easycep' && steps.guard.outputs.skip != 'true'
-        # Without the list the crawl simply reads every unit page again, so a database hiccup must not stop it.
-        continue-on-error: true
-        run: uv run python -m price_radar.storage.landing known-ids --out "$RUNNER_TEMP/known-ids.txt"
       - name: Crawl
         id: crawl
         if: steps.guard.outputs.skip != 'true'
         run: |
           args=(--source "$SOURCE" --max-requests "$MAX_REQUESTS" --out "$RUNNER_TEMP/run" --markdown)
-          if [ -f "$RUNNER_TEMP/known-ids.txt" ]; then args+=(--known-ids "$RUNNER_TEMP/known-ids.txt"); fi
           set +e
           uv run python -m price_radar.ingest.run "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
           code=${PIPESTATUS[0]}

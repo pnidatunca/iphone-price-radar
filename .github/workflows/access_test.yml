@@ -10,8 +10,8 @@ on:
       source:
         description: Source to test
         type: choice
-        options: [getmobil, easycep, both]
-        default: both
+        options: [getmobil]  # Easycep was dropped on 14.10.2026 (its terms of use forbid crawlers)
+        default: getmobil
       max_requests:
         description: Request budget per source, robots.txt included
         type: number
@@ -38,7 +38,7 @@ jobs:
           SOURCE: ${{ inputs.source }}
           MAX_REQUESTS: ${{ inputs.max_requests }}
         run: |
-          if [ "$SOURCE" = "both" ]; then sources="getmobil easycep"; else sources="$SOURCE"; fi
+          sources="$SOURCE"
           status=0
           for source in $sources; do
             # The output directory lives in the runner's temp space and disappears with the job.
