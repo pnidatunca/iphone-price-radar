@@ -20,7 +20,7 @@ and how much storage a year of data needs.
 - **Stated plainly:** that fetcher counted its 2.0–3.5 s gap from the *start* of the previous request. Responses took
   5.8–9.2 s, so requests went out back to back: one at a time, roughly 7–10 per minute in continuous runs. That broke
   the project's own rule. The production client now starts the gap after the previous response has been received
-  (commit `4d79131`).
+  (commit `dad9ff0`).
 - No challenge page, 403 or 429 appeared, but only under that load and with the temporary identity.
 
 ## Sources tested
