@@ -35,6 +35,10 @@ sources:
   easycep:
     enabled: true
     base_url: "https://easycep.com"
+  tcmb:
+    # Official USD/TRY rate (plan 5.4): one archive bulletin per business day, loaded into ref.fx_rates.
+    enabled: true
+    base_url: "https://www.tcmb.gov.tr"
 
 retention:
   detail_days: 90
