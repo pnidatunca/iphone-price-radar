@@ -44,7 +44,7 @@ SOURCE = "getmobil"
 PARSER_VERSION = "getmobil-1"
 HOST = "getmobil.com"
 BASE_URL = f"https://{HOST}"
-CATALOG = "/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
+CATALOG = "/satin-al/cep-telefonu/apple"
 _VARIANT_PATH = re.escape(CATALOG) + rf"/{urls.SLUG}/{urls.SLUG}-\d+/"
 URL_FORMS = (
     urls.UrlForm("brand", re.compile(re.escape(CATALOG) + "/")),
@@ -138,7 +138,7 @@ def listing_url(slug: str, page: int) -> str:
 
 def variant_url(path: str) -> str:
     """Fetch URL of a variant from the relative path a listing record gives, e.g.
-    ``cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/apple-iphone-13-128-gb-mavi-813?merchantId=1``.
+    ``cep-telefonu/apple/iphone-13/apple-iphone-13-128-gb-mavi-813?merchantId=1``.
 
     The query is dropped (the default page lists every seller) and the trailing slash the site links with is added.
     """
@@ -174,10 +174,10 @@ def parse_listing_page(html: str) -> ListingPage:
     total, last_page = as_int(data.get("total")), as_int(data.get("lastPage"))
     if total is None or last_page is None or total < 0 or last_page < 0:
         raise ParseError("listing data without a valid total and lastPage")
-    models = tuple(_model_links((data.get("aggregations") or {}).get("models") or []))
     variants: list[ListingVariant] = []
     refused: list[tuple[str, str]] = []
     skipped: list[str] = []
+    models = tuple(_model_links((data.get("aggregations") or {}).get("models") or [], skipped))
     for record in [] if data.get("groupedData") else data.get("products") or []:
         record_id = as_int(record.get("id")) if isinstance(record, dict) else None
         path = record.get("url") if isinstance(record, dict) else None
@@ -517,14 +517,18 @@ def _form(url: str) -> str | None:
         return None
 
 
-def _model_links(entries: list[Any]) -> Iterator[ModelLink]:
+def _model_links(entries: list[Any], skipped: list[str]) -> Iterator[ModelLink]:
+    """Model categories whose path is the one this adapter requests. Any other entry is reported in ``skipped``: on
+    15.10.2026 Getmobil moved its catalogue and every model was dropped without a word."""
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         slug, label, path = entry.get("slug"), clean_text(entry.get("value")), entry.get("path")
         if not isinstance(slug, str) or not re.fullmatch(urls.SLUG, slug):
+            skipped.append(f"model category with an unusable slug {slug!r}")
             continue
         if not isinstance(path, str) or path.rstrip("/") != f"{CATALOG.removeprefix('/satin-al')}/{slug}":
+            skipped.append(f"model category {slug} has an unexpected path {path!r}")
             continue
         yield ModelLink(slug, canonical_model(slug) or canonical_model(label), label or slug)
 

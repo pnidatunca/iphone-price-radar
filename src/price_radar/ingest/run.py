@@ -8,8 +8,8 @@ a GitHub job summary. The summary holds counts, timings and error reasons only, 
 summaries of a public repository are public.
 
 Exit codes: 0 when the run ended normally (a spent request budget included), 1 when the site stopped the run (bot
-challenge, 401/403, too many errors, robots.txt unavailable) or the run crashed, 2 for a usage error. The summary is
-written in every case but a usage error.
+challenge, 401/403, too many errors, robots.txt unavailable), a run that ran to its end collected no offer at all, or
+the run crashed, 2 for a usage error. The summary is written in every case but a usage error.
 """
 
 from __future__ import annotations
@@ -127,6 +127,11 @@ def main(
         except Exception as err:  # a bug must not lose the summary of what was collected so far
             log.exception("%s run crashed", args.source)
             stats.stop_reason = f"crashed: {type(err).__name__}: {err}"
+            failed = True
+        if stats.stop_reason is None and stats.offers == 0:
+            # A crawl that reaches its end without one offer means the site changed under the parser (15.10.2026:
+            # Getmobil moved its catalogue), not a quiet day; it must not count as the day's run.
+            stats.stop_reason = "no offers collected"
             failed = True
         summary = build_summary(
             args=args,

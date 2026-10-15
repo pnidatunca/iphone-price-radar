@@ -8,7 +8,7 @@ from price_radar.ingest.http_client import BudgetExhausted
 from price_radar.ingest.sources import getmobil
 
 BASE = "https://getmobil.com"
-CATALOG = "/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
+CATALOG = "/satin-al/cep-telefonu/apple"
 VARIANT_URL = f"{BASE}{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-900101/"
 
 
@@ -212,3 +212,15 @@ def test_a_spent_budget_stops_the_crawl():
     with pytest.raises(BudgetExhausted):
         list(getmobil.crawl(ctx))
     assert len(fake.requested) == 5
+
+
+def test_model_categories_under_another_path_are_reported():
+    skipped: list[str] = []
+    entries = [
+        {"slug": "iphone-13", "value": "iPhone 13", "path": "/cep-telefonu/apple/iphone-13"},
+        {"slug": "iphone-14", "value": "iPhone 14", "path": "/cep-telefonu/iphone-ios-telefonlar/apple/iphone-14"},
+    ]
+    assert [link.slug for link in getmobil._model_links(entries, skipped)] == ["iphone-13"]
+    assert skipped == [
+        "model category iphone-14 has an unexpected path '/cep-telefonu/iphone-ios-telefonlar/apple/iphone-14'"
+    ]

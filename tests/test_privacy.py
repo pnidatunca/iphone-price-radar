@@ -17,7 +17,7 @@ FORBIDDEN_TEXT = ("Example Store", "example-store-", "/magazalarimiz/", "Decoy S
 
 def all_offers() -> list[RawOffer]:
     offers: list[RawOffer] = []
-    base = "https://getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
+    base = "https://getmobil.com/satin-al/cep-telefonu/apple"
     for name, url in (
         ("variant_alternatives.html", f"{base}/iphone-13/apple-iphone-13-128-gb-mavi-900101/"),
         ("variant_esim.html", f"{base}/iphone-14-pro/apple-iphone-14-pro-256-gb-gumus-900103/"),

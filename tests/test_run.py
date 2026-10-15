@@ -7,7 +7,7 @@ from helpers import NOW, FakeSite, page
 from price_radar.ingest import run
 from price_radar.ingest.schemas import RawOffer
 
-CATALOG = "/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
+CATALOG = "/satin-al/cep-telefonu/apple"
 UNIT_1 = "/apple-iphone-13-128-gb-mavi-cep-telefonu-700001"
 UNIT_2 = "/apple-iphone-14-128-gb-yildiz-isigi-cep-telefonu-700002"
 
@@ -103,6 +103,15 @@ def test_a_bot_challenge_fails_the_run_but_keeps_the_summary(tmp_path):
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
     assert summary["stop_reason"].startswith("bot challenge or HTTP 403")
     assert (tmp_path / "offers.jsonl").read_text("utf-8") == ""
+
+
+def test_a_run_that_ends_without_offers_fails(tmp_path):
+    # 15.10.2026: Getmobil moved its catalogue, no model was usable and the run "completed" with nothing.
+    site = getmobil_site(**{f"{CATALOG}/": httpx.Response(404)})
+    assert cli(["--source", "getmobil", "--out", str(tmp_path)], site) == 1
+    summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
+    assert summary["stop_reason"] == "no offers collected"
+    assert summary["failures"]["count"] == 1
 
 
 def test_percentiles_use_the_nearest_rank():

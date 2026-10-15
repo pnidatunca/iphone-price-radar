@@ -41,7 +41,7 @@ Disallow: /
 @pytest.mark.parametrize(
     ("robots", "path", "expected"),
     [
-        (GETMOBIL, "/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/", True),
+        (GETMOBIL, "/satin-al/cep-telefonu/apple/iphone-13/", True),
         (GETMOBIL, "/satin-al/x/apple-iphone-13-128-gb-gece-yarisi-797/?merchantId=1", True),
         (GETMOBIL, "/satin-al/x/?minPrice=100", False),
         (GETMOBIL, "/satin-al/x/?a=1&minPrice=100", False),

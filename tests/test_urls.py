@@ -3,7 +3,7 @@ import pytest
 from price_radar.ingest.sources import easycep, getmobil
 from price_radar.ingest.urls import UrlNotAllowed
 
-CATALOG = "https://getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple"
+CATALOG = "https://getmobil.com/satin-al/cep-telefonu/apple"
 VARIANT = f"{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-900101/"
 
 
@@ -38,9 +38,10 @@ def test_getmobil_allows_its_page_forms(url, form):
         f"{CATALOG}/IPHONE-13/",
         "https://getmobil.com/ara?term=iphone",
         "https://getmobil.com/satin-al/aksesuar/kilif/",
-        "http://getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/",
-        "https://getmobil.com:8443/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/",
-        "https://www.getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/",
+        "http://getmobil.com/satin-al/cep-telefonu/apple/",
+        "https://getmobil.com:8443/satin-al/cep-telefonu/apple/",
+        "https://www.getmobil.com/satin-al/cep-telefonu/apple/",
+        "https://getmobil.com/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/",  # the path before 15.10.2026
         f"{CATALOG}/#reviews",
     ],
 )
@@ -53,14 +54,14 @@ def test_getmobil_refuses_sort_filter_and_unknown_urls(url):
     ("path", "expected"),
     [
         (
-            "cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101/?merchantId=7001",
+            "cep-telefonu/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101/?merchantId=7001",
             VARIANT,
         ),
         (
-            "cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101?merchantId=7001",
+            "cep-telefonu/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101?merchantId=7001",
             VARIANT,
         ),
-        ("/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101", VARIANT),
+        ("/satin-al/cep-telefonu/apple/iphone-13/apple-iphone-13-128-gb-mavi-900101", VARIANT),
     ],
 )
 def test_getmobil_variant_urls_drop_the_query_and_add_the_trailing_slash(path, expected):
@@ -71,8 +72,8 @@ def test_getmobil_variant_urls_drop_the_query_and_add_the_trailing_slash(path, e
     "path",
     [
         "cep-telefonu/aksesuar/kilif/ornek-kilif-900199/",
-        "cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/",
-        "cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/../../../ara-1/",
+        "cep-telefonu/apple/iphone-13/",
+        "cep-telefonu/apple/iphone-13/../../../ara-1/",
     ],
 )
 def test_getmobil_refuses_paths_that_are_not_variant_pages(path):
