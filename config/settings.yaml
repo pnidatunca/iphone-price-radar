@@ -1,9 +1,10 @@
 # Non-secret settings. Secrets come from environment variables (see .env.example).
 
 crawler:
-  # Honest identity (decision K5): project name and a link to the notice for site owners in the README.
-  # robots.txt groups addressed to the product token "IphonePriceRadar" are honoured.
-  user_agent: "IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar#for-site-owners)"
+  # Honest identity (decision K5): the crawler names itself as a bot, never as a browser. Since 15.10.2026 it carries
+  # no link, so no request points to a personal account (owner's decision). robots.txt groups addressed to the
+  # product token "IphonePriceRadar" are honoured.
+  user_agent: "IphonePriceRadar/0.1"
   delay_seconds: [2.0, 3.5]      # random gap after each response before the next request to the same site
   # Per run. Phase 0 measured 6-9 s per response, so with the gap 1,500 requests take about 3.5-5 hours;
   # a full Getmobil run needs about 805 requests (about 2-2.7 hours).

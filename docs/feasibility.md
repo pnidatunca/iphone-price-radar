@@ -118,8 +118,8 @@ Getmobil's RSC payload alone is 196–282 KB per page.
 
 What site owners need is in the README section [For site owners](../README.md#for-site-owners). In short:
 
-- **Identity (K5):** `IphonePriceRadar/0.1 (+https://github.com/pnidatunca/iphone-price-radar#for-site-owners)`, with
-  no e-mail address; site owners reach the project through GitHub issues.
+- **Identity (K5):** `IphonePriceRadar/0.1`, a bot name with no e-mail address or link (the link was dropped on
+  15.10.2026); site owners can exclude it by name in `robots.txt` or open a GitHub issue.
 - **robots.txt:** read on every run, including groups for the `IphonePriceRadar` product token (RFC 9309).
 - **Load:** one request at a time per site, a random 2–3.5 s gap after each response, one run a day, at most 1,500
   requests per source. Public pages only; no internal APIs, no browser automation.

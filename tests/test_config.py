@@ -4,7 +4,7 @@ from price_radar.config import load_settings
 def test_settings_file_is_valid():
     settings = load_settings()
     assert settings.crawler.user_agent.startswith("IphonePriceRadar/")
-    assert "github.com/pnidatunca/iphone-price-radar#for-site-owners" in settings.crawler.user_agent
+    assert "github.com" not in settings.crawler.user_agent  # no link to a personal account (owner, 15.10.2026)
     assert "@" not in settings.crawler.user_agent  # no e-mail address in the identity (decision K5)
     assert set(settings.sources) >= {"getmobil", "easycep"}
     assert settings.crawler.delay_seconds == (2.0, 3.5)

@@ -27,7 +27,8 @@ clearly below the market.
 
 - Only public product and category pages are requested; paths disallowed by `robots.txt` are never requested.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
-- The crawler identifies itself honestly; its User-Agent links to the [notice for site owners](#for-site-owners).
+- The crawler identifies itself as a bot by name (`IphonePriceRadar`), never as a browser; see
+  [For site owners](#for-site-owners).
 - No personal data is collected.
 - Raw catalogue data (images, descriptions, product lists) is not republished. Only aggregated analyses and model
   outputs are shown, with links to the original product pages.
@@ -37,7 +38,7 @@ clearly below the market.
 The crawler of this project identifies itself as:
 
 ```text
-IphonePriceRadar/<version> (+https://github.com/pnidatunca/iphone-price-radar#for-site-owners)
+IphonePriceRadar/<version>
 ```
 
 - It runs once a day, sends one request at a time with 2–3.5 seconds between requests, and follows `robots.txt`,
@@ -48,9 +49,9 @@ IphonePriceRadar/<version> (+https://github.com/pnidatunca/iphone-price-radar#fo
 - It does not republish your catalogue: only aggregated statistics and model outputs are shown, with links back to
   your product pages.
 
-To ask for changes or for your site to be excluded, please
-[open an issue](https://github.com/pnidatunca/iphone-price-radar/issues). Exclusion requests are honoured from the
-next run on.
+To exclude your site, add a `User-agent: IphonePriceRadar` group with `Disallow: /` to your `robots.txt`; it is read
+on every run. For anything else, please [open an issue](https://github.com/pnidatunca/iphone-price-radar/issues).
+Exclusion requests are honoured from the next run on.
 
 ## Roadmap
 
