@@ -1,8 +1,9 @@
 """Shared test helpers: the synthetic fixture pages and a fake site behind httpx.MockTransport.
 
 The pages under tests/fixtures/ keep the structure of real Getmobil and Easycep pages (flight rows, React element
-arrays, reference paths, text rows) but every value in them is invented: ids, prices, stock, seller ids and names,
-SKUs, EANs and URLs. No test makes a network request.
+arrays, reference paths, text rows) and of real Trendyol pages (``window["..."]`` JSON state blocks), but every value
+in them is invented: ids, prices, stock, seller ids, names and legal details, SKUs, EANs, titles and URLs. No test
+makes a network request.
 """
 
 from __future__ import annotations

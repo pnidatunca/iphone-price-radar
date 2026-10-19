@@ -155,7 +155,11 @@ def test_rows_parse_from_raw_bytes():
     assert [(row.id, row.tag, row.value) for row in rows] == [("0", "", {"a": 1}), ("1", "T", "ç"), ("2", "", None)]
 
 
-@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*/*.html")), ids=lambda p: f"{p.parent.name}/{p.name}")
+# The Next.js sites; Trendyol pages carry JSON state blocks instead of flight data.
+FLIGHT_FIXTURES = sorted(path for site in ("getmobil", "easycep") for path in (FIXTURES / site).glob("*.html"))
+
+
+@pytest.mark.parametrize("path", FLIGHT_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.name}")
 def test_every_fixture_page_decodes(path):
     html = path.read_text(encoding="utf-8")
     assert flight_bytes(html)

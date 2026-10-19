@@ -1,6 +1,7 @@
 import pytest
 
 from price_radar.ingest.robots import is_allowed, parse_robots
+from price_radar.ingest.sources import trendyol
 
 # Trimmed copies of the real files (fetched 2026-10-11), keeping the rules that matter for the adapters.
 GETMOBIL = """
@@ -25,9 +26,31 @@ Sitemap: https://easycep.com/sitemap.xml
 TRENDYOL = """
 User-agent: *
 User-agent: Googlebot
+Disallow: /*?mid=
+Disallow: /*?pid=
 Disallow: /*?q=
-Disallow: /sr?
+Disallow: /*?sst=
+Disallow: /*?wc=
+Disallow: /*&mid=
+Disallow: /*&pid=
+Disallow: /*&sst=
+Disallow: /*&wc=
+Disallow: /*disablemerchant=
+Disallow: /*satici=
+Disallow: /*seller=
+Disallow: /*/*/*-p-*/merchant-questions
 Disallow: /*/*-p-*/saticilar
+Disallow: /diger-saticilar
+Disallow: /gw/
+Disallow: /sr?
+Disallow: /sr/
+Disallow: /sr$
+Disallow: */*-x-b*-a*-v*
+Disallow: */sr/*-x-b*-c*-a*-v*
+Allow: /*-x-b*-c*-a*-v*
+
+# Pagination Rules
+Disallow: /*-x-*-a*-v*?pi=
 """
 LETGO_LIKE = """
 User-agent: *
@@ -108,3 +131,34 @@ def test_empty_disallow_allows_everything():
 
 def test_no_rules_means_allowed():
     assert is_allowed(parse_robots(""), "/anything")
+
+
+def trendyol_path(url: str) -> str:
+    return url.removeprefix(trendyol.BASE_URL)
+
+
+def test_trendyol_rules_allow_every_url_the_adapter_requests_or_builds():
+    rules = parse_robots(TRENDYOL, "IphonePriceRadar")
+    for category in trendyol.CATEGORY_PATHS:  # the refurbished and the iPhone category
+        for number in (1, 2, 5, 24):
+            assert is_allowed(rules, trendyol_path(trendyol.listing_url(category, number))), (category, number)
+    assert is_allowed(rules, trendyol_path(trendyol.model_url(613184, "iPhone 13")))
+    product = trendyol.product_url("/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104?boutiqueId=7&merchantId=7")
+    assert is_allowed(rules, trendyol_path(product))
+    assert is_allowed(rules, trendyol_path(trendyol.offer_url(product, 1234567)))
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/iphone-13-cep-telefonu-x-c103498-a292-v613184?pi=2",  # model pages after page 1
+        "/iphone-ios-cep-telefonlari-x-c164462?sst=PRICE_BY_ASC",
+        "/iphone-ios-cep-telefonlari-x-c164462?pi=2&wc=164462",
+        "/apple-yenilenmis-cep-telefonu-x-b101470-c109461?q=iphone",
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104/saticilar",
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104?mid=7",
+        "/sr?q=iphone",
+    ],
+)
+def test_trendyol_rules_disallow_what_the_allowlist_refuses_anyway(path):
+    assert not is_allowed(parse_robots(TRENDYOL, "IphonePriceRadar"), path)

@@ -10,6 +10,9 @@ A unit page adds what the listing lacks: the SKU, whose suffix tokens are condit
 (PU, EU, KU, 2ESIM; their meaning is not published), the EAN and the warranty. They do not change for an id, so a unit
 page is read only for ids the caller has not seen before (``CrawlContext.known_ids``). Unit pages of sold units stay
 online with the last price, so they are never a source of offers.
+
+Prices (the rule of schemas.py). ``price_tl`` is the listing's ``salePrice``; ``basePrice``, the price before a
+discount, becomes ``list_price_tl`` (on every archived item the two were equal, so ``promo_pct`` was 0).
 """
 
 from __future__ import annotations
@@ -28,12 +31,12 @@ from price_radar.ingest.crawl import CrawlContext
 from price_radar.ingest.http_client import CrawlStopped
 from price_radar.ingest.normalize import as_decimal, as_int, canonical_model, clean_text, storage_gb
 from price_radar.ingest.rsc import Flight, FlightError
-from price_radar.ingest.schemas import RawOffer, error_summary
+from price_radar.ingest.schemas import RawOffer, error_summary, list_price_and_promo
 
 log = logging.getLogger(__name__)
 
 SOURCE = "easycep"
-PARSER_VERSION = "easycep-1"
+PARSER_VERSION = "easycep-2"  # 2: list_price_tl and promo_pct filled
 HOST = "easycep.com"
 BASE_URL = f"https://{HOST}"
 LISTING_PATH = "/kategori/apple-2"
@@ -201,10 +204,18 @@ def attributes(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_offer(item: dict[str, Any], *, unit: UnitInfo | None, fetched_at: datetime, snapshot_date: date) -> RawOffer:
+def build_offer(
+    item: dict[str, Any],
+    *,
+    unit: UnitInfo | None,
+    fetched_at: datetime,
+    snapshot_date: date,
+    problems: list[str] | None = None,
+) -> RawOffer:
     """The offer of one listing item, completed with the unit page details when ``unit`` is given.
 
-    Raises ValueError (pydantic's ValidationError is one) with the reason when the item cannot be an offer.
+    Raises ValueError (pydantic's ValidationError is one) with the reason when the item cannot be an offer. An
+    implausible ``basePrice`` is not used as the list price; the reason is appended to ``problems``.
     """
     item_id = str(item.get("id") or "")
     if not DIGITS.fullmatch(item_id):
@@ -218,6 +229,10 @@ def build_offer(item: dict[str, Any], *, unit: UnitInfo | None, fetched_at: date
     if storage is None:
         raise ValueError(f"unknown storage {attrs.get('Hafıza')!r}")
     price = item.get("price") if isinstance(item.get("price"), dict) else {}
+    paid = as_decimal(price.get("salePrice"))
+    if paid is None:
+        raise ValueError(f"no salePrice: {price.get('salePrice')!r}")
+    listed, promo, problem = list_price_and_promo(paid, as_decimal(price.get("basePrice")))
     quantity = as_int(item.get("quantity"))
     flags = list(unit.sku.flags) if unit and unit.sku else []
     category = item.get("category") if isinstance(item.get("category"), dict) else {}
@@ -236,7 +251,7 @@ def build_offer(item: dict[str, Any], *, unit: UnitInfo | None, fetched_at: date
         ],
         "unit": _unit_payload(unit),
     }
-    return RawOffer(
+    offer = RawOffer(
         platform=SOURCE,
         offer_key=f"easycep:{item_id}",
         snapshot_date=snapshot_date,
@@ -252,7 +267,9 @@ def build_offer(item: dict[str, Any], *, unit: UnitInfo | None, fetched_at: date
         condition_flags=flags,
         seller_id=None,
         is_buybox=True,
-        price_tl=as_decimal(price.get("salePrice")),
+        price_tl=paid,
+        list_price_tl=listed,
+        promo_pct=promo,
         stock_qty=quantity,
         in_stock=item.get("stockStatus") is True and (quantity or 0) > 0,
         product_url=url,
@@ -260,6 +277,9 @@ def build_offer(item: dict[str, Any], *, unit: UnitInfo | None, fetched_at: date
         payload=payload,
         parser_version=PARSER_VERSION,
     )
+    if problem and problems is not None:
+        problems.append(f"easycep:{item_id}: {problem}")
+    return offer
 
 
 def crawl(ctx: CrawlContext) -> Iterator[RawOffer]:
@@ -303,12 +323,16 @@ def crawl(ctx: CrawlContext) -> Iterator[RawOffer]:
                 ctx.stats.counters["items_new_device"] += 1
                 continue
             _check_grade(ctx, item_id, unit, attributes(item).get("Kozmetik"))
+        problems: list[str] = []
         try:
-            offer = build_offer(item, unit=unit, fetched_at=seen_at, snapshot_date=ctx.snapshot_date)
+            offer = build_offer(item, unit=unit, fetched_at=seen_at, snapshot_date=ctx.snapshot_date, problems=problems)
         except (ValidationError, ValueError) as err:
             ctx.stats.counters["offers_rejected"] += 1
             ctx.stats.warn(f"rejected offer easycep:{item_id}: {error_summary(err)}")
             continue
+        for problem in problems:
+            ctx.stats.counters["implausible_list_prices"] += 1
+            ctx.stats.warn(f"implausible list price not used: {problem}")
         ctx.stats.sellers_per_variant[1] += 1
         yield offer
     if stopped is not None:

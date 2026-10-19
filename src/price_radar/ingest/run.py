@@ -4,8 +4,9 @@
 
 Writes ``DIR/offers.jsonl`` (one RawOffer per line) and ``DIR/run_summary.json``; raw HTML is never written. With
 ``--summary-only`` no offers are written and the summary is also printed to stdout as Markdown, ready to be appended to
-a GitHub job summary. The summary holds counts, timings and error reasons only, no catalogue content, because job
-summaries of a public repository are public.
+a GitHub job summary. The summary holds counts, timings, error reasons and the values seen in a few vocabulary fields
+(``observed``: Trendyol's warranty types), no catalogue content, because job summaries of a public repository are
+public.
 
 Exit codes: 0 when the run ended normally (a spent request budget included), 1 when the site stopped the run (bot
 challenge, 401/403, too many errors, robots.txt unavailable), a run that ran to its end collected no offer at all, or
@@ -32,11 +33,11 @@ import httpx
 from price_radar.config import load_settings
 from price_radar.ingest.crawl import CrawlContext, CrawlStats, utc_now
 from price_radar.ingest.http_client import BudgetExhausted, CrawlStopped, PoliteClient
-from price_radar.ingest.sources import easycep, getmobil
+from price_radar.ingest.sources import easycep, getmobil, trendyol
 
 log = logging.getLogger(__name__)
 
-SOURCES = {"getmobil": getmobil, "easycep": easycep}
+SOURCES = {"getmobil": getmobil, "easycep": easycep, "trendyol": trendyol}
 MARKDOWN_EXAMPLES = 5
 
 
@@ -53,7 +54,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--max-variants",
         type=_positive_int,
-        help="at most this many variant pages (Getmobil) or unit pages (Easycep)",
+        help="at most this many variant pages (Getmobil), unit pages (Easycep) or product pages (Trendyol)",
     )
     parser.add_argument(
         "--known-ids",
@@ -201,6 +202,7 @@ def build_summary(
         "failures": {"count": stats.failure_count, "examples": stats.failures},
         "warnings": {"count": stats.warning_count, "examples": stats.warnings},
         "counters": dict(sorted(stats.counters.items())),
+        "observed": {name: dict(values.most_common()) for name, values in sorted(stats.observed.items())},
         "discovery": stats.discovery,
         "response_seconds": {
             "count": len(durations),

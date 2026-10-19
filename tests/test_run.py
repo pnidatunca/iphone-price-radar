@@ -36,6 +36,27 @@ def easycep_site() -> FakeSite:
     return FakeSite("https://easycep.com", routes)
 
 
+def trendyol_site() -> FakeSite:
+    refurbished = "/apple-yenilenmis-cep-telefonu-x-b101470-c109461"
+    new = "/iphone-ios-cep-telefonlari-x-c164462"
+    routes = {
+        refurbished: page("trendyol/refurbished_listing_p1.html"),
+        f"{refurbished}?pi=2": page("trendyol/refurbished_listing_p2.html"),
+        new: page("trendyol/new_listing_p1.html"),
+        f"{new}?pi=2": page("trendyol/new_listing_p2.html"),
+        "/apple/yenilenmis-iphone-13-128-gb-mavi-ornek-urun-a-kalite-p-900000101": page(
+            "trendyol/product_buybox_others.html"
+        ),
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-p-900000104": page("trendyol/product_new_phone.html"),
+        "/apple/iphone-15-ornek-urun-128-gb-siyah-ithalatci-garantili-p-900000108": page(
+            "trendyol/product_new_importer.html"
+        ),
+        "/iphone-15-cep-telefonu-x-c103498-a292-v9404": page("trendyol/model_listing_iphone_15.html"),
+        "/apple/iphone-15-ornek-urun-256-gb-mavi-p-900000111": page("trendyol/product_new_hidden.html"),
+    }
+    return FakeSite("https://www.trendyol.com", routes)
+
+
 def cli(args: list[str], site: FakeSite) -> int:
     return run.main(args, transport=site.transport(), sleep=lambda seconds: None, now=lambda: NOW)
 
@@ -47,6 +68,7 @@ def test_cli_writes_offers_and_a_summary(tmp_path):
         RawOffer.model_validate_json(line) for line in (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
     ]
     assert len(offers) == 7 and len({o.offer_key for o in offers}) == 7
+    assert all((o.list_price_tl, o.promo_pct) == (o.price_tl, 0) for o in offers)  # no struck-through prices here
     summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
     assert summary["stop_reason"] == "completed"
     assert (summary["offers"], summary["in_stock_offers"]) == (7, 7)
@@ -57,6 +79,7 @@ def test_cli_writes_offers_and_a_summary(tmp_path):
     assert summary["response_seconds"]["count"] == 9
     assert summary["snapshot_date"] == "2026-10-12"
     assert summary["counters"]["variants_removed"] == 1
+    assert summary["observed"] == {}  # only Trendyol counts values (warranty types)
 
 
 def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
@@ -68,6 +91,51 @@ def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
     assert "| Offers | 3 (3 in stock) |" in markdown
     assert "| Requests | 6 of 40 |" in markdown
     assert "Example Store" not in markdown and "M-PIP" not in markdown
+
+
+def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
+    assert cli(["--source", "trendyol", "--out", str(tmp_path), "--markdown"], trendyol_site()) == 0
+    lines = (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
+    offers = [RawOffer.model_validate_json(line) for line in lines]
+    assert [o.offer_key for o in offers][:5] == [
+        "trendyol:900000101:7001",
+        "trendyol:900000101:7002",
+        "trendyol:900000101:7003",
+        "trendyol:900000104:7010",
+        "trendyol:900000104:7013",
+    ]
+    assert len(offers) == 19  # 3 refurbished, 2 + 13 new from the category, 1 new from the iPhone 15 model page
+    assert all(o.list_price_tl >= o.price_tl and o.promo_pct is not None for o in offers)
+    assert all('"list_price_tl":' in line and '"promo_pct":' in line for line in lines)
+    summary = json.loads((tmp_path / "run_summary.json").read_text("utf-8"))
+    assert (summary["source"], summary["parser_version"], summary["stop_reason"]) == (
+        "trendyol",
+        "trendyol-3",
+        "completed",
+    )
+    # Seven of the product pages answer 404 here, so only the iPhone 15 model page is known and read.
+    assert summary["pages_fetched"] == {"listing": 4, "model": 1, "product": 11}
+    counters = summary["counters"]
+    assert (counters["refurbished_products_discovered"], counters["new_products_discovered"]) == (35, 6)
+    assert (counters["refurbished_pages_requested"], counters["new_pages_requested"]) == (5, 5)
+    assert (counters["refurbished_offers"], counters["new_offers"]) == (3, 16)
+    assert (counters["model_listings_requested"], counters["model_products_discovered"]) == (1, 1)
+    assert "products_not_refurbished" not in counters
+    assert summary["observed"] == {
+        "warranty_types_new": {"Apple Türkiye Garantili": 2, "İthalatçı Garantili": 1},
+        "warranty_types_refurbished": {"Yenilenmiş Ürün (12 Ay Garanti)": 1},
+    }
+    assert summary["discovery"]["products_seen"] == 41
+    assert summary["discovery"]["new_category_coverage"] == {
+        "data_total": 38,
+        "seen_on_category_pages": 26,
+        "added_by_model_pages": 1,
+        "added_by_model_pages_and_new": 1,
+        "remaining_gap": 11,
+    }
+    markdown = capsys.readouterr().out
+    assert markdown.startswith("### Collection run: trendyol")
+    assert "Decoy Seller" not in markdown and "@example.com" not in markdown
 
 
 def test_known_ids_skip_their_unit_pages(tmp_path):
