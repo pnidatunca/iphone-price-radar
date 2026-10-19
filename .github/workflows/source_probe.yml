@@ -1,0 +1,31 @@
+name: source-probe
+
+# Manual check of candidate sources from GitHub's network (Trendyol answered locally and blocked GitHub, 19.10.2026).
+# A few requests per site through the polite client; one notice per URL, no page content kept.
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: Space-separated https URLs (robots.txt of each host is read first)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Probe
+        env:
+          URLS: ${{ inputs.urls }}
+        run: |
+          read -ra urls <<< "$URLS"
+          uv run python -m price_radar.ingest.probe --label github --annotate "${urls[@]}"
