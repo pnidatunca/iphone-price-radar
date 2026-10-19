@@ -100,3 +100,7 @@ The `trial-crawl` workflow (Phase 0) runs every morning at 04:47 Turkey time, wi
 nothing if that day's run is already loaded (GitHub sometimes drops scheduled runs). Each source gets one full run,
 loaded into the `raw.landing` table in Neon with `python -m price_radar.storage.landing load`. Nothing is uploaded as
 an artifact. It covers Getmobil; Trendyol (`--source trendyol`) joins it after an access test and one full run.
+
+The `fx-rates` workflow runs every morning and stores the TCMB bulletins that are not stored yet in `ref.fx_rates`
+(`python -m price_radar.fx.tcmb`, then `python -m price_radar.storage.fx_rates load`). Prices of day D are converted
+with the USD forex selling rate announced on the last business day before D.

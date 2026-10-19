@@ -37,9 +37,13 @@ sources:
     enabled: true
     base_url: "https://easycep.com"
   trendyol:
-    # Collected by the CLI and the access test; joins the nightly trial-crawl run after the current 3-day trial.
+    # Collected by the CLI and the access test; joins the nightly trial-crawl run after an access test and a full run.
     enabled: true
     base_url: "https://www.trendyol.com"
+  tcmb:
+    # Official USD/TRY rate (plan 5.4): one archive bulletin per business day, loaded into ref.fx_rates.
+    enabled: true
+    base_url: "https://www.tcmb.gov.tr"
 
 retention:
   detail_days: 90

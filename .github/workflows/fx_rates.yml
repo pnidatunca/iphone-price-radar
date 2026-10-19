@@ -1,0 +1,57 @@
+name: fx-rates
+
+# TCMB exchange rates into ref.fx_rates (plan 5.4). A run requests only the bulletins of the last days that are not
+# stored yet, so a missed morning is caught up by the next run. Start it once by hand with days=95 for the 90-day
+# backfill. TCMB rates are public, so the job summary shows the latest one.
+
+on:
+  schedule:
+    # 06:13 Turkey time. The run needs bulletins up to yesterday's (announced at 15:30), so a late start does no harm.
+    - cron: "13 3 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days to check, counted back from yesterday (95 for the first backfill)
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fx-rates
+  cancel-in-progress: false
+
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      DAYS: ${{ inputs.days || 10 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Stored bulletin days
+        # Without the list every weekday in the window is requested again: a few extra requests, nothing stored twice.
+        continue-on-error: true
+        run: uv run python -m price_radar.storage.fx_rates known-dates --out "$RUNNER_TEMP/known-dates.txt"
+      - name: Fetch rates
+        run: |
+          args=(--days "$DAYS" --out "$RUNNER_TEMP/fx" --markdown)
+          if [ -f "$RUNNER_TEMP/known-dates.txt" ]; then args+=(--known-dates "$RUNNER_TEMP/known-dates.txt"); fi
+          set +e
+          uv run python -m price_radar.fx.tcmb "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+          code=${PIPESTATUS[0]}
+          set -e
+          failures=$(jq -r '.failures.count // 0' "$RUNNER_TEMP/fx/run_summary.json" 2>/dev/null || echo 0)
+          if [ "$failures" != "0" ]; then echo "::warning title=TCMB::$failures bulletin(s) unreadable, retried next run"; fi
+          exit "$code"
+      - name: Load into Neon
+        # Also after a failed fetch: the bulletins read before the stop are still worth keeping.
+        if: always()
+        run: |
+          if [ ! -s "$RUNNER_TEMP/fx/rates.jsonl" ]; then echo "no new rates to load"; exit 0; fi
+          uv run python -m price_radar.storage.fx_rates load --file "$RUNNER_TEMP/fx/rates.jsonl"
