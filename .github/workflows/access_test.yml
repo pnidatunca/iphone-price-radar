@@ -43,8 +43,14 @@ jobs:
           for source in $sources; do
             # The output directory lives in the runner's temp space and disappears with the job.
             # tee: the summary goes to the job summary and to the log, where it can be read from the command line.
+            out="$RUNNER_TEMP/access-test/$source"
             uv run python -m price_radar.ingest.run --source "$source" --max-requests "$MAX_REQUESTS" \
-              --out "$RUNNER_TEMP/access-test/$source" --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
-            if [ "${PIPESTATUS[0]}" -ne 0 ]; then status=1; fi
+              --out "$out" --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+            code=${PIPESTATUS[0]}
+            if [ "$code" -ne 0 ]; then status=1; fi
+            # The outcome as an annotation as well: annotations can be read through the API where job logs cannot.
+            result=$(jq -r '"\(.offers) offers, \(.requests.made) requests, HTTP \(.status_codes | tojson), \(.stop_reason)"' \
+              "$out/run_summary.json" 2>/dev/null || echo "no run summary")
+            echo "::notice title=$source access test (exit $code)::$result"
           done
           exit "$status"

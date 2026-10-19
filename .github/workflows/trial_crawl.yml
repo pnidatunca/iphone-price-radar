@@ -67,6 +67,10 @@ jobs:
           # A run cut short by its request budget exits 0 but is incomplete; make that visible.
           reason=$(jq -r '.stop_reason // "missing"' "$RUNNER_TEMP/run/run_summary.json" 2>/dev/null || echo missing)
           if [ "$reason" != "completed" ]; then echo "::warning title=Incomplete $SOURCE run::$reason"; fi
+          # Counts as an annotation: annotations can be read through the API where job logs cannot.
+          result=$(jq -r '"\(.offers) offers, \(.requests.made) requests, \(.warnings.count) warnings, \(.failures.count) failures"' \
+            "$RUNNER_TEMP/run/run_summary.json" 2>/dev/null || echo "no run summary")
+          echo "::notice title=$SOURCE run (exit $code)::$result"
           exit "$code"
       - name: Load into Neon
         # Also after a failed crawl: the summary (and any offers collected before the stop) is still worth keeping.
