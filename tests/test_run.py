@@ -3,6 +3,7 @@ import json
 import httpx
 from helpers import NOW, FakeSite, page
 
+from price_radar.config import load_settings
 from price_radar.ingest import run
 from price_radar.ingest.schemas import RawOffer
 
@@ -79,7 +80,17 @@ def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
     assert "Example Store" not in markdown
 
 
-def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
+def test_a_disabled_source_is_refused(tmp_path, capsys):
+    site = trendyol_site()
+    assert cli(["--source", "trendyol", "--out", str(tmp_path)], site) == 2  # dropped on 19.10.2026
+    assert "not enabled" in capsys.readouterr().err
+    assert site.requested == []
+
+
+def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys, monkeypatch):
+    settings = load_settings()
+    settings.sources["trendyol"] = settings.sources["trendyol"].model_copy(update={"enabled": True})
+    monkeypatch.setattr(run, "load_settings", lambda: settings)  # the adapter is kept and tested while disabled
     assert cli(["--source", "trendyol", "--out", str(tmp_path), "--markdown"], trendyol_site()) == 0
     lines = (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
     offers = [RawOffer.model_validate_json(line) for line in lines]

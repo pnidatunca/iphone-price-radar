@@ -34,8 +34,9 @@ sources:
     enabled: true
     base_url: "https://getmobil.com"
   trendyol:
-    # Collected by the CLI and the access test; joins the nightly trial-crawl run after an access test and a full run.
-    enabled: true
+    # Dropped on 19.10.2026 (decision K17): Trendyol blocks requests from GitHub Actions (a bot challenge or HTTP 403 on
+    # the first listing page), so it cannot be crawled nightly. The adapter stays for reference; the CLI refuses it.
+    enabled: false
     base_url: "https://www.trendyol.com"
   tcmb:
     # Official USD/TRY rate (plan 5.4): one archive bulletin per business day, loaded into ref.fx_rates.

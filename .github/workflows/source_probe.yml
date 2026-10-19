@@ -4,6 +4,10 @@ name: source-probe
 # A few requests per site through the polite client; one notice per URL, no page content kept.
 
 on:
+  schedule:
+    # Watch list (19.10.2026): Turkcell Pasaj passed every check but its refurbished iPhone category had no stock.
+    # Two requests on the first of each month; the notice shows how many offers are in stock.
+    - cron: "23 7 1 * *"
   workflow_dispatch:
     inputs:
       urls:
@@ -25,7 +29,7 @@ jobs:
         run: uv sync --locked
       - name: Probe
         env:
-          URLS: ${{ inputs.urls }}
+          URLS: ${{ inputs.urls || 'https://www.turkcell.com.tr/pasaj/cep-telefonu/yenilenmis-telefonlar-apple' }}
         run: |
           read -ra urls <<< "$URLS"
           uv run python -m price_radar.ingest.probe --label github --annotate "${urls[@]}"

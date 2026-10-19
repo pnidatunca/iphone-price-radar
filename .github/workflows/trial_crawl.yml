@@ -14,7 +14,7 @@ on:
       source:
         description: Source to crawl ("nightly" is the set the schedule crawls)
         type: choice
-        options: [nightly, getmobil, trendyol]
+        options: [nightly, getmobil]
         default: nightly
       max_requests:
         description: Request budget per source, robots.txt included
@@ -33,8 +33,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The nightly set is Getmobil; a manual run can crawl one source instead. Trendyol joins the nightly set after
-        # its access test and first full run. Easycep was dropped on 14.10.2026: its terms of use forbid crawlers.
+        # The nightly set is Getmobil; a manual run can crawl one source instead. Easycep (14.10.2026) and Trendyol
+        # (19.10.2026) were dropped; see config/settings.yaml.
         source: ${{ fromJSON(inputs.source && inputs.source != 'nightly' && format('["{0}"]', inputs.source) || '["getmobil"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 330

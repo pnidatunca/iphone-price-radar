@@ -21,15 +21,14 @@ new phones.
 | Source | Role |
 |---|---|
 | Getmobil | Refurbished-device marketplace (multiple sellers) |
-| Trendyol | General marketplace (multiple sellers per product): the refurbished Apple phone category and the iPhone category; the only source of new iPhones; joins the nightly run after an access test and one full run |
+| Trendyol | Not collected: dropped on 19.10.2026 because it blocks requests from GitHub Actions. The adapter (refurbished and new iPhones) stays in the code, disabled |
 | TCMB | Official daily USD/TRY rates, used to normalise prices |
 
 ## Data collection policy
 
 - Only public product and category pages are requested; paths disallowed by `robots.txt` are never requested.
-- Each source requests only a fixed list of URL forms. On Trendyol these are two category listings (refurbished Apple
-  phones and iPhones, with `?pi=` pages), the first page of iPhone model pages and bare product pages; sorting,
-  filters, search, seller pages, further model pages and internal APIs are refused in code.
+- Each source requests only a fixed list of URL forms; sorting, filters, search, seller pages and internal APIs are
+  refused in code.
 - One connection per site, 2–3.5 seconds between requests, one run per day.
 - The crawler identifies itself as a bot by name (`IphonePriceRadar`), never as a browser; see
   [For site owners](#for-site-owners).
@@ -98,8 +97,7 @@ and writes only counts and timings to the job summary.
 The `trial-crawl` workflow (Phase 0) runs every morning at 04:47 Turkey time, with a fallback at 08:47 that does
 nothing if that day's run is already loaded (GitHub sometimes drops scheduled runs). Each source gets one full run,
 loaded into the `raw.landing` table in Neon with `python -m price_radar.storage.landing load`. Nothing is uploaded as
-an artifact. It covers Getmobil; Trendyol (`--source trendyol`) joins it after an access test and one full run.
-A manual run can crawl a single source (the `source` input).
+an artifact. It covers Getmobil.
 
 The `fx-rates` workflow runs every morning and stores the TCMB bulletins that are not stored yet in `ref.fx_rates`
 (`python -m price_radar.fx.tcmb`, then `python -m price_radar.storage.fx_rates load`). Prices of day D are converted

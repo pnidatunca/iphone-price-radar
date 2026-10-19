@@ -10,7 +10,8 @@ on:
       source:
         description: Source to test
         type: choice
-        options: [getmobil, trendyol]  # Easycep was dropped on 14.10.2026 (its terms of use forbid crawlers)
+        # Easycep (14.10.2026) and Trendyol (19.10.2026) were dropped; see config/settings.yaml.
+        options: [getmobil]
         default: getmobil
       max_requests:
         description: Request budget per source, robots.txt included

@@ -84,3 +84,16 @@ def test_annotation_is_one_line_per_url():
     line = probe.annotation(result, "github")
     assert line.startswith("::notice title=probe github shop.example/yenilenmis::ok; HTTP 200; ")
     assert "JSON-LD AggregateOffer,BreadcrumbList,Product" in line and "\n" not in line
+
+
+def test_offer_availability_is_counted():
+    page = """<script type="application/ld+json">{"@type": "ItemList", "itemListElement": [
+      {"@type": "ListItem", "item": {"@type": "Product", "offers": {"@type": "Offer",
+        "availability": "https://schema.org/OutOfStock"}}},
+      {"@type": "ListItem", "item": {"@type": "Product", "offers": {"@type": "Offer",
+        "availability": "https://schema.org/InStock"}}},
+      {"@type": "ListItem", "item": {"@type": "Product", "offers": {"@type": "Offer",
+        "availability": "https://schema.org/OutOfStock"}}}]}</script>"""
+    markers = probe.page_markers(page)
+    assert markers["offer_availability"] == {"InStock": 1, "OutOfStock": 2}
+    assert markers["json_ld"] == ["ItemList", "ListItem", "Offer", "Product"]

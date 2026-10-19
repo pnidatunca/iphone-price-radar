@@ -24,6 +24,7 @@ import json
 import re
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import Any
@@ -96,17 +97,23 @@ def bot_management(headers: httpx.Headers) -> list[str]:
 def page_markers(html: str) -> dict[str, Any]:
     """What a page carries that a parser could use. Counts only: no content is kept."""
     types: set[str] = set()
+    stock: Counter[str] = Counter()  # schema.org availability of the offers, e.g. InStock, OutOfStock
     for block in JSON_LD.findall(html):
         try:
             data = json.loads(block.strip())
         except ValueError:
             types.add("(invalid)")
             continue
-        types.update(_ld_types(data))
+        for node in _ld_nodes(data):
+            kind = node.get("@type")
+            types.update(k for k in (kind if isinstance(kind, list) else [kind]) if isinstance(k, str))
+            if isinstance(node.get("availability"), str):
+                stock[node["availability"].rsplit("/", 1)[-1]] += 1
     title = TITLE.search(html)
     return {
         "title": " ".join(title.group(1).split())[:80] if title else None,
         "json_ld": sorted(types),
+        "offer_availability": dict(sorted(stock.items())),
         "next_data": "__NEXT_DATA__" in html,
         "next_flight": "self.__next_f.push" in html,
         "iphone_mentions": len(re.findall(r"iphone", html, re.I)),
@@ -114,19 +121,16 @@ def page_markers(html: str) -> dict[str, Any]:
     }
 
 
-def _ld_types(node: Any) -> Iterable[str]:
+def _ld_nodes(node: Any) -> Iterable[dict[str, Any]]:
+    """Every JSON-LD object, following the keys that hold products and offers."""
     if isinstance(node, list):
         for item in node:
-            yield from _ld_types(item)
+            yield from _ld_nodes(item)
     elif isinstance(node, dict):
-        kind = node.get("@type")
-        if isinstance(kind, str):
-            yield kind
-        elif isinstance(kind, list):
-            yield from (k for k in kind if isinstance(k, str))
+        yield node
         for key in ("@graph", "itemListElement", "offers", "item", "mainEntity"):
             if key in node:
-                yield from _ld_types(node[key])
+                yield from _ld_nodes(node[key])
 
 
 def probe(
@@ -187,6 +191,8 @@ def annotation(result: dict[str, Any], label: str) -> str:
     if "bytes" in result:
         parts.append(f"{result['bytes']} B in {result['seconds']} s")
         parts.append("JSON-LD " + (",".join(result["json_ld"]) or "none"))
+        if result["offer_availability"]:
+            parts.append("offers " + ", ".join(f"{state} x{n}" for state, n in result["offer_availability"].items()))
         if result["next_data"] or result["next_flight"]:
             parts.append("Next.js data")
         parts.append(f"iPhone x{result['iphone_mentions']}, TL prices x{result['tl_prices']}")
