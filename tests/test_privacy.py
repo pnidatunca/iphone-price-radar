@@ -12,7 +12,7 @@ from helpers import NOW, page
 from pydantic import ValidationError
 
 from price_radar.ingest.schemas import RawOffer
-from price_radar.ingest.sources import easycep, getmobil, trendyol
+from price_radar.ingest.sources import getmobil, trendyol
 
 FORBIDDEN_KEYS = (
     "name",
@@ -60,15 +60,6 @@ def all_offers() -> list[RawOffer]:
     ):
         result = getmobil.parse_variant_page(page(f"getmobil/{name}"), url, fetched_at=NOW, snapshot_date=NOW.date())
         offers.extend(result.offers)
-    units = {
-        unit.unit_id: unit
-        for unit in map(easycep.parse_unit_page, (page("easycep/unit_flags.html"), page("easycep/unit_esim.html")))
-    }
-    for listing in ("listing_p1.html", "listing_p2.html"):
-        for item in easycep.parse_listing_page(page(f"easycep/{listing}")).items:
-            if easycep.item_model(item) != "iPhone 8":
-                unit = units.get(item["id"])
-                offers.append(easycep.build_offer(item, unit=unit, fetched_at=NOW, snapshot_date=NOW.date()))
     for name, path in TRENDYOL_PAGES.items():
         url = f"https://www.trendyol.com{path}"
         result = trendyol.parse_product_page(page(f"trendyol/{name}"), url, fetched_at=NOW, snapshot_date=NOW.date())
@@ -98,8 +89,8 @@ def test_the_trendyol_fixtures_do_contain_names_and_legal_details():
 
 def test_parsed_offers_have_no_name_or_slug_fields_at_any_depth():
     offers = all_offers()
-    assert len(offers) == 29
-    assert {o.platform for o in offers} == {"getmobil", "easycep", "trendyol"}
+    assert len(offers) == 26
+    assert {o.platform for o in offers} == {"getmobil", "trendyol"}
     for offer in offers:
         record = json.loads(offer.model_dump_json())
         found = [key for key in keys(record) if any(word in key.lower().replace("_", "") for word in FORBIDDEN_KEYS)]

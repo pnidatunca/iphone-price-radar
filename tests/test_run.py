@@ -1,15 +1,12 @@
 import json
 
 import httpx
-import pytest
 from helpers import NOW, FakeSite, page
 
 from price_radar.ingest import run
 from price_radar.ingest.schemas import RawOffer
 
 CATALOG = "/satin-al/cep-telefonu/apple"
-UNIT_1 = "/apple-iphone-13-128-gb-mavi-cep-telefonu-700001"
-UNIT_2 = "/apple-iphone-14-128-gb-yildiz-isigi-cep-telefonu-700002"
 
 
 def getmobil_site(**overrides) -> FakeSite:
@@ -23,17 +20,6 @@ def getmobil_site(**overrides) -> FakeSite:
         f"{CATALOG}/iphone-14-pro/apple-iphone-14-pro-256-gb-gumus-900103/": page("getmobil/variant_esim.html"),
     }
     return FakeSite("https://getmobil.com", routes | overrides)
-
-
-def easycep_site() -> FakeSite:
-    routes = {
-        "/kategori/apple-2?page=1": page("easycep/listing_p1.html"),
-        "/kategori/apple-2?page=2": page("easycep/listing_p2.html"),
-        UNIT_1: page("easycep/unit_flags.html"),
-        UNIT_2: page("easycep/unit_esim.html"),
-        "/apple-iphone-12-mini-64-gb-siyah-cep-telefonu-700003": page("easycep/unit_unknown_token.html"),
-    }
-    return FakeSite("https://easycep.com", routes)
 
 
 def trendyol_site() -> FakeSite:
@@ -83,14 +69,14 @@ def test_cli_writes_offers_and_a_summary(tmp_path):
 
 
 def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
-    args = ["--source", "easycep", "--out", str(tmp_path), "--max-requests", "40", "--summary-only"]
-    assert cli(args, easycep_site()) == 0
+    args = ["--source", "getmobil", "--out", str(tmp_path), "--max-requests", "40", "--summary-only"]
+    assert cli(args, getmobil_site()) == 0
     assert [path.name for path in tmp_path.iterdir()] == ["run_summary.json"]
     markdown = capsys.readouterr().out
-    assert markdown.startswith("### Access test: easycep")
-    assert "| Offers | 3 (3 in stock) |" in markdown
-    assert "| Requests | 6 of 40 |" in markdown
-    assert "Example Store" not in markdown and "M-PIP" not in markdown
+    assert markdown.startswith("### Access test: getmobil")
+    assert "| Offers | 7 (7 in stock) |" in markdown
+    assert "| Requests | 9 of 40 |" in markdown
+    assert "Example Store" not in markdown
 
 
 def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
@@ -136,26 +122,6 @@ def test_cli_collects_new_and_refurbished_trendyol_offers(tmp_path, capsys):
     markdown = capsys.readouterr().out
     assert markdown.startswith("### Collection run: trendyol")
     assert "Decoy Seller" not in markdown and "@example.com" not in markdown
-
-
-def test_known_ids_skip_their_unit_pages(tmp_path):
-    known = tmp_path / "known.txt"
-    known.write_text("# unit pages read before\neasycep:700001\n700002  # second one\n\n", encoding="utf-8")
-    site = easycep_site()
-    assert cli(["--source", "easycep", "--out", str(tmp_path / "out"), "--known-ids", str(known)], site) == 0
-    assert UNIT_1 not in site.requested and UNIT_2 not in site.requested
-
-
-def test_known_ids_are_easycep_only(tmp_path):
-    with pytest.raises(SystemExit) as exit_info:
-        run.parse_args(["--source", "getmobil", "--out", str(tmp_path), "--known-ids", "ids.txt"])
-    assert exit_info.value.code == 2
-
-
-def test_a_malformed_known_ids_file_is_a_usage_error(tmp_path):
-    known = tmp_path / "known.txt"
-    known.write_text("700001\nnot-an-id\n", encoding="utf-8")
-    assert cli(["--source", "easycep", "--out", str(tmp_path), "--known-ids", str(known)], easycep_site()) == 2
 
 
 def test_a_spent_budget_ends_the_run_normally(tmp_path):

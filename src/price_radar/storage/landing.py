@@ -5,12 +5,8 @@ import them into the real schema. Until then this database is the only place raw
 as a GitHub artifact, because artifacts of a public repository are public.
 
     python -m price_radar.storage.landing load --run-dir DIR --run-id ID [--exit-code N]
-    python -m price_radar.storage.landing known-ids --out FILE
     python -m price_radar.storage.landing loaded-today --source SOURCE
     python -m price_radar.storage.landing db-size [--warn-mb 350]
-
-``known-ids`` lists the Easycep ids whose unit page was read in an earlier run (their offers carry a SKU), so the next
-run reads unit pages only for new ids.
 """
 
 from __future__ import annotations
@@ -119,17 +115,6 @@ def load(conn: psycopg.Connection, run: LandingRun, exit_code: int | None) -> in
     return len(run.offers)
 
 
-def known_unit_ids(conn: psycopg.Connection) -> list[str]:
-    """Easycep ids whose unit page was read in an earlier run; empty before the first load."""
-    if conn.execute("select to_regclass('raw.landing')").fetchone()[0] is None:
-        return []
-    rows = conn.execute(
-        "select distinct offer_key from raw.landing"
-        " where source = 'easycep' and offer->>'sku' is not null order by offer_key"
-    ).fetchall()
-    return [key.removeprefix("easycep:") for (key,) in rows]
-
-
 def loaded_today(conn: psycopg.Connection, source: str, snapshot_date: str) -> bool:
     """True if a complete run of ``source`` for this Turkish calendar day was loaded: exit code 0 and the crawl got
     to the end. A run cut short by its request budget also exits 0, but it does not count as done."""
@@ -164,8 +149,6 @@ def main(argv: list[str] | None = None) -> int:
     load_cmd.add_argument("--run-dir", type=Path, required=True)
     load_cmd.add_argument("--run-id", required=True)
     load_cmd.add_argument("--exit-code", type=int)
-    ids_cmd = commands.add_parser("known-ids", help="write the Easycep ids whose unit page was read before")
-    ids_cmd.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
 
@@ -181,17 +164,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "loaded-today":
             today = datetime.now(UTC).astimezone(TURKEY).date().isoformat()
             print("true" if loaded_today(conn, args.source, today) else "false")
-        elif args.command == "db-size":
+        else:
             size = conn.execute("select pg_database_size(current_database())").fetchone()[0]
             text, warn = size_report(size, args.warn_mb, args.limit_mb)
             print(text)
             if warn:
                 # A GitHub Actions annotation: shown as a warning on the run page.
                 print(f"::warning title=Neon storage::{text}. Phase 1 retention is needed soon.")
-        else:
-            ids = known_unit_ids(conn)
-            args.out.write_text("".join(f"{item}\n" for item in ids), encoding="utf-8")
-            log.info("%s known Easycep ids written to %s", len(ids), args.out)
     return 0
 
 

@@ -1,7 +1,7 @@
 """The raw offer record every source adapter produces (plan section 7.4, updated by the Phase 0 findings).
 
 Phase 0 changed the plan's field list: no site has a per-offer battery health and the warranty is constant, so both
-are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}``, ``easycep:{id}`` or
+are optional; the offer key is ``getmobil:{variant_id}:{vendor_id}`` or
 ``trendyol:{content_id}:{merchant_id}``; and the record carries the numeric seller id, the stock quantity, the SIM
 type, the SKU and its condition flags.
 
@@ -11,7 +11,7 @@ Prices mean the same on every platform:
   per-user coupons are ignored everywhere);
 * ``list_price_tl`` is the price before any temporary discount that the page itself shows for that offer: Trendyol's
   ``sellingPrice``, Getmobil's struck-through price of the buybox offer (``priceInfo.strikethrough``; other sellers show
-  none), Easycep's ``basePrice``. When the page shows no separate earlier price, ``list_price_tl`` equals ``price_tl``;
+  none). When the page shows no separate earlier price, ``list_price_tl`` equals ``price_tl``;
 * ``promo_pct`` is the discount between the two, in percent of ``list_price_tl``, computed from them (0 without one).
 
 ``list_price_and_promo`` applies the rule for the adapters, which always fill both fields. A shown earlier price below
@@ -37,10 +37,10 @@ from urllib.parse import urlsplit
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-Platform = Literal["getmobil", "easycep", "trendyol"]
+Platform = Literal["getmobil", "trendyol"]  # Easycep was dropped on 14.10.2026
 SimType = Literal["physical", "esim"]
 
-PLATFORM_HOSTS = {"getmobil": "getmobil.com", "easycep": "easycep.com", "trendyol": "www.trendyol.com"}
+PLATFORM_HOSTS = {"getmobil": "getmobil.com", "trendyol": "www.trendyol.com"}
 STORAGE_VALUES_GB = frozenset({16, 32, 64, 128, 256, 512, 1024, 2048})
 MAX_PRICE_TL = Decimal("1000000")  # sanity bound: a larger value is a parsing error (e.g. kuruş read as lira)
 CENTS = Decimal("0.01")
@@ -82,8 +82,7 @@ FORBIDDEN_VALUE = re.compile(r"/magazalarimiz/|/magaza/", re.IGNORECASE)  # Getm
 class RawOffer(BaseModel):
     """One offer as seen on one day. ``model`` is the canonical name (see ``normalize.canonical_model``).
 
-    ``sim_type`` and the SKU fields are None or empty when the page that carries them was not read in this run
-    (Easycep shows them only on unit pages, which are fetched once per id) or the site does not show them (Trendyol).
+    ``sim_type`` and the SKU fields are None or empty when the site does not show them (Trendyol).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

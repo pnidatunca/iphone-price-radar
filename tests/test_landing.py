@@ -6,14 +6,14 @@ from price_radar.config import database_url
 from price_radar.storage.landing import offer_rows, read_run, size_report
 
 SUMMARY = {
-    "source": "easycep",
+    "source": "getmobil",
     "started_at": "2026-10-12T00:17:00+00:00",
     "finished_at": "2026-10-12T00:20:00+00:00",
     "offers": 2,
 }
 
 
-def offer(key: str, platform: str = "easycep") -> dict:
+def offer(key: str, platform: str = "getmobil") -> dict:
     return {
         "platform": platform,
         "offer_key": key,
@@ -33,25 +33,25 @@ def write_run(run_dir, offers=None, summary=SUMMARY):
 
 
 def test_run_directory_becomes_one_row_per_offer(tmp_path):
-    run = read_run(write_run(tmp_path, [offer("easycep:1"), offer("easycep:2")]), "123-easycep")
+    run = read_run(write_run(tmp_path, [offer("getmobil:1:7"), offer("getmobil:2:7")]), "123-getmobil")
     rows = offer_rows(run)
     assert [row[:5] for row in rows] == [
-        ("123-easycep", "easycep:1", "easycep", "2026-10-12", "2026-10-12T00:18:00+00:00"),
-        ("123-easycep", "easycep:2", "easycep", "2026-10-12", "2026-10-12T00:18:00+00:00"),
+        ("123-getmobil", "getmobil:1:7", "getmobil", "2026-10-12", "2026-10-12T00:18:00+00:00"),
+        ("123-getmobil", "getmobil:2:7", "getmobil", "2026-10-12", "2026-10-12T00:18:00+00:00"),
     ]
-    assert rows[0][5].obj == offer("easycep:1")  # the whole offer document is stored unchanged
+    assert rows[0][5].obj == offer("getmobil:1:7")  # the whole offer document is stored unchanged
 
 
 def test_run_without_offers_file_still_loads_its_summary(tmp_path):
-    run = read_run(write_run(tmp_path), "123-easycep")
+    run = read_run(write_run(tmp_path), "123-getmobil")
     assert run.offers == []
     assert run.summary == SUMMARY
 
 
 def test_offer_from_another_source_is_refused(tmp_path):
-    run_dir = write_run(tmp_path, [offer("getmobil:1:2", platform="getmobil")])
+    run_dir = write_run(tmp_path, [offer("trendyol:1:2", platform="trendyol")])
     with pytest.raises(ValueError):
-        read_run(run_dir, "123-easycep")
+        read_run(run_dir, "123-getmobil")
 
 
 def test_size_report_warns_from_the_threshold_on():

@@ -37,7 +37,7 @@ without trying to get past any protection.
 | Dolap | Peer-to-peer classifieds | Blocked for the bot identity; opens for a browser but has no iPhones | Dropped |
 | n11, Hepsiburada | Marketplaces | Blocked with both identities | Dropped |
 | Getmobil | Refurbished marketplace, many sellers | Each variant page lists every seller with price and stock | **GO** |
-| Easycep | Refurbished retailer, single seller | One listing gives price, quantity, condition and battery range per SKU | **GO** |
+| Easycep | Refurbished retailer, single seller | One listing gives price, quantity, condition and battery range per SKU | GO, but dropped on 14.10.2026: its terms of use forbid crawlers |
 | Trendyol | Marketplace | The refurbished Apple phone category lists 843 products and the iPhone category 151 (new phones and some misfiled refurbished ones), 36 cards a page; each product page lists the winning seller and the other sellers with price and listing id (up to 13 on a new phone, up to 5 on refurbished ones); no battery health, SIM type or stock quantity | **Conditional GO**: adapter written, refurbished and new phones; the only source of new iPhones; joins the nightly run after the current 3-day trial (owner's decision) |
 | TCMB | Central bank exchange rates | Daily and archive XML files | Used for USD/TRY |
 

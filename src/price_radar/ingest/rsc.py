@@ -1,7 +1,7 @@
 """Decoder for Next.js App Router flight data (the React Server Components payload) embedded in HTML.
 
-Getmobil and Easycep render their pages with the Next.js App Router. The page data is not in the visible HTML but in
-inline scripts that stream the RSC payload::
+Getmobil renders its pages with the Next.js App Router (so did Easycep, dropped on 14.10.2026). The page data is not
+in the visible HTML but in inline scripts that stream the RSC payload::
 
     <script>self.__next_f.push([1,"0:{...}\\n3:I[68172,[],\\"\\"]\\n"])</script>
 
@@ -11,7 +11,7 @@ order, the pieces form a stream of rows, as React's flight client reads them:
 
 * ``<hex id>:<json>`` is a model row; the page data lives in these;
 * ``<hex id>:T<hex length>,<text>`` is a text row. The length counts UTF-8 bytes, so the text is cut by byte count and
-  may contain newlines (both sites put their JSON-LD here);
+  may contain newlines (JSON-LD sits here);
 * ``<hex id>:<tag><json>`` is a tagged row: ``I`` (client module), ``HL`` (resource hint, written with an empty id by
   newer Next.js versions), ``E`` (error) and so on;
 * ``<hex id>:X`` and ``<hex id>:C`` open and close a stream and may carry no payload.

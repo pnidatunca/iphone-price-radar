@@ -76,9 +76,9 @@ def test_descriptive_fields_must_not_be_blank(field):
 @pytest.mark.parametrize(
     "changes",
     [
-        {"offer_key": "easycep:900101"},
+        {"offer_key": "trendyol:900101:7001"},
         {"product_url": "http://getmobil.com/x/"},
-        {"offer_url": "https://easycep.com/x"},
+        {"offer_url": "https://www.trendyol.com/x"},
         {"seller_id": 0},
         {"stock_qty": -1},
         {"sim_type": "dual"},

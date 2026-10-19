@@ -90,7 +90,6 @@ class CrawlContext:
     scope: ScopeSettings
     stats: CrawlStats
     max_variants: int | None = None
-    known_ids: frozenset[str] = frozenset()
     now: Callable[[], datetime] = utc_now
     snapshot_date: date = field(init=False)
 

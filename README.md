@@ -21,8 +21,7 @@ new phones.
 | Source | Role |
 |---|---|
 | Getmobil | Refurbished-device marketplace (multiple sellers) |
-| Easycep | Refurbished-device retailer (unit-level listings) |
-| Trendyol | General marketplace (multiple sellers per product): the refurbished Apple phone category and the iPhone category; the only source of new iPhones; joins the nightly run after the current 3-day trial |
+| Trendyol | General marketplace (multiple sellers per product): the refurbished Apple phone category and the iPhone category; the only source of new iPhones; joins the nightly run after an access test and one full run |
 | TCMB | Official daily USD/TRY rates, used to normalise prices |
 
 ## Data collection policy
@@ -37,7 +36,7 @@ new phones.
 - No personal data is collected.
 - Prices mean the same on every platform: `price_tl` is what a buyer pays today for the offer, `list_price_tl` the
   price before a temporary discount that the page itself shows for that offer (Trendyol's sticker price before the
-  automatic basket promotion, Getmobil's struck-through price, Easycep's base price), or `price_tl` when the page shows
+  automatic basket promotion, Getmobil's struck-through price), or `price_tl` when the page shows
   none, and `promo_pct` the discount between the two. An implausible earlier price is not stored and is reported;
   per-user coupons are ignored.
 - Raw catalogue data (images, descriptions, product lists) is not republished. Only aggregated analyses and model
@@ -90,7 +89,7 @@ copy `.env.example` to `.env` for local runs.
 One collection run of one source writes `offers.jsonl` and `run_summary.json` (`data/` is not committed):
 
 ```bash
-uv run python -m price_radar.ingest.run --source easycep --out data/runs/easycep --max-requests 40
+uv run python -m price_radar.ingest.run --source getmobil --out data/runs/getmobil --max-requests 40
 ```
 
 The manual `access-test` workflow runs the same command on GitHub Actions with `--summary-only`; it keeps no data

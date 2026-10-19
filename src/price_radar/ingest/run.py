@@ -33,16 +33,16 @@ import httpx
 from price_radar.config import load_settings
 from price_radar.ingest.crawl import CrawlContext, CrawlStats, utc_now
 from price_radar.ingest.http_client import BudgetExhausted, CrawlStopped, PoliteClient
-from price_radar.ingest.sources import easycep, getmobil, trendyol
+from price_radar.ingest.sources import getmobil, trendyol
 
 log = logging.getLogger(__name__)
 
-SOURCES = {"getmobil": getmobil, "easycep": easycep, "trendyol": trendyol}
+SOURCES = {"getmobil": getmobil, "trendyol": trendyol}
 MARKDOWN_EXAMPLES = 5
 
 
 class UsageError(Exception):
-    """Bad command line input that argparse cannot catch (for example a malformed --known-ids file)."""
+    """Bad command line input that argparse cannot catch (for example a malformed --known-dates file)."""
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -54,20 +54,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--max-variants",
         type=_positive_int,
-        help="at most this many variant pages (Getmobil), unit pages (Easycep) or product pages (Trendyol)",
-    )
-    parser.add_argument(
-        "--known-ids",
-        type=Path,
-        help="Easycep only: ids whose unit page was read before, one per line ('easycep:' prefix allowed)",
+        help="at most this many variant pages (Getmobil) or product pages (Trendyol)",
     )
     parser.add_argument("--out", type=Path, required=True, help="output directory")
     parser.add_argument("--summary-only", action="store_true", help="write no offers; print the summary as Markdown")
     parser.add_argument("--markdown", action="store_true", help="also print the summary as Markdown (counts only)")
-    args = parser.parse_args(argv)
-    if args.known_ids is not None and args.source != "easycep":
-        parser.error("--known-ids applies to --source easycep only")
-    return args
+    return parser.parse_args(argv)
 
 
 def main(
@@ -85,11 +77,6 @@ def main(
     if source is None or not source.enabled:
         print(f"source {args.source} is not enabled in config/settings.yaml", file=sys.stderr)
         return 2
-    try:
-        known_ids = read_known_ids(args.known_ids) if args.known_ids else frozenset()
-    except (OSError, UsageError) as err:
-        print(f"cannot use --known-ids: {err}", file=sys.stderr)
-        return 2
     policy = settings.crawler.policy()
     if args.max_requests:
         policy = dataclasses.replace(policy, max_requests=args.max_requests)
@@ -106,7 +93,6 @@ def main(
             scope=settings.scope,
             stats=stats,
             max_variants=args.max_variants,
-            known_ids=known_ids,
             now=now,
         )
         seen: set[str] = set()
@@ -158,19 +144,6 @@ def main(
     return 1 if failed else 0
 
 
-def read_known_ids(path: Path) -> frozenset[str]:
-    """Ids from a text file, one per line; blank lines and '#' comments are ignored."""
-    ids = set()
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        token = line.split("#", 1)[0].strip().removeprefix("easycep:")
-        if not token:
-            continue
-        if not token.isascii() or not token.isdigit():
-            raise UsageError(f"{path}:{number}: {token!r} is not a numeric id")
-        ids.add(token)
-    return frozenset(ids)
-
-
 def build_summary(
     *,
     args: argparse.Namespace,
@@ -213,7 +186,6 @@ def build_summary(
         "options": {
             "max_requests": args.max_requests,
             "max_variants": args.max_variants,
-            "known_ids": str(args.known_ids) if args.known_ids else None,
             "summary_only": args.summary_only,
             "markdown": args.markdown,
         },

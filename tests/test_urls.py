@@ -1,6 +1,6 @@
 import pytest
 
-from price_radar.ingest.sources import easycep, getmobil, trendyol
+from price_radar.ingest.sources import getmobil, trendyol
 from price_radar.ingest.urls import UrlNotAllowed
 
 CATALOG = "https://getmobil.com/satin-al/cep-telefonu/apple"
@@ -86,47 +86,6 @@ def test_getmobil_builders_only_produce_allowed_urls():
     assert getmobil.offer_url(VARIANT, 7001) == f"{VARIANT}?merchantId=7001"
     with pytest.raises(UrlNotAllowed):
         getmobil.listing_url("iphone-13/?sortStrategy=price&x", 1)
-
-
-@pytest.mark.parametrize(
-    ("url", "form"),
-    [
-        ("https://easycep.com/kategori/apple-2?page=1", "listing"),
-        ("https://easycep.com/kategori/apple-2?page=6", "listing"),
-        ("https://easycep.com/apple-iphone-13-128-gb-mavi-cep-telefonu-700001", "unit"),
-        ("https://easycep.com/iphone-15-128-gb-mavi-cep-telefonu-700002", "unit"),
-    ],
-)
-def test_easycep_allows_its_page_forms(url, form):
-    assert easycep.check_url(url) == form
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        # robots.txt has "*?orderby*", which does not catch "&orderby": the allowlist must.
-        "https://easycep.com/kategori/apple-2?page=2&orderby=1",
-        "https://easycep.com/kategori/apple-2?orderby=1",
-        "https://easycep.com/kategori/apple-2?page=1&filter=apple",
-        "https://easycep.com/kategori/apple-2?keyword=iphone",
-        "https://easycep.com/kategori/apple-2?_rsc=1",
-        "https://easycep.com/kategori/iphone-13-116",
-        "https://easycep.com/apple-iphone-13-128-gb-mavi-cep-telefonu-700001?ref=x",
-        "https://easycep.com/sepet/add-to-cart/5",
-        "https://easycep.com/api/v1/staticPage/getStaticPage",
-    ],
-)
-def test_easycep_refuses_sort_filter_and_unknown_urls(url):
-    with pytest.raises(UrlNotAllowed):
-        easycep.check_url(url)
-
-
-def test_easycep_builders_only_produce_allowed_urls():
-    assert easycep.listing_url(2) == "https://easycep.com/kategori/apple-2?page=2"
-    unit = "https://easycep.com/apple-iphone-13-128-gb-mavi-cep-telefonu-700001"
-    assert easycep.unit_url("/apple-iphone-13-128-gb-mavi-cep-telefonu-700001") == unit
-    with pytest.raises(UrlNotAllowed):
-        easycep.unit_url("/kategori/apple-2?page=2&orderby=1")
 
 
 TY = "https://www.trendyol.com"

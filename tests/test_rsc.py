@@ -156,7 +156,7 @@ def test_rows_parse_from_raw_bytes():
 
 
 # The Next.js sites; Trendyol pages carry JSON state blocks instead of flight data.
-FLIGHT_FIXTURES = sorted(path for site in ("getmobil", "easycep") for path in (FIXTURES / site).glob("*.html"))
+FLIGHT_FIXTURES = sorted(path for site in ("getmobil",) for path in (FIXTURES / site).glob("*.html"))
 
 
 @pytest.mark.parametrize("path", FLIGHT_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.name}")

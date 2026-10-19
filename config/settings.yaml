@@ -33,9 +33,6 @@ sources:
   getmobil:
     enabled: true
     base_url: "https://getmobil.com"
-  easycep:
-    enabled: true
-    base_url: "https://easycep.com"
   trendyol:
     # Collected by the CLI and the access test; joins the nightly trial-crawl run after an access test and a full run.
     enabled: true
