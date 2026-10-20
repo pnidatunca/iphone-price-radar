@@ -1,7 +1,9 @@
-name: trial-crawl
+name: daily-pipeline
 
-# Phase 0 trial crawl (decisions K13 and K19): one full run per source per day. Offers go straight to Neon's
-# raw.landing table; nothing is uploaded as an artifact and the job summary holds counts and timings only.
+# Phase 1 nightly data pipeline (plan 6.1): one full run per source per day, loaded into Neon's raw.offer_snapshots
+# (the payload only when an offer changed), raw.rejected_offers and ops.pipeline_runs. Nothing is uploaded as an
+# artifact and the job summary holds counts and timings only (K12, K19). It replaced the Phase 0 trial-crawl workflow
+# on 20.10.2026.
 
 on:
   schedule:
@@ -25,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: trial-crawl
+  group: daily-pipeline
   cancel-in-progress: false
 
 jobs:
@@ -53,7 +55,7 @@ jobs:
         # Scheduled runs only; a manual run always crawls. If the database cannot be asked, the crawl runs anyway.
         if: github.event_name == 'schedule'
         continue-on-error: true
-        run: echo "skip=$(uv run python -m price_radar.storage.landing loaded-today --source "$SOURCE")" >> "$GITHUB_OUTPUT"
+        run: echo "skip=$(uv run python -m price_radar.storage.snapshots loaded-today --source "$SOURCE")" >> "$GITHUB_OUTPUT"
       - name: Crawl
         id: crawl
         if: steps.guard.outputs.skip != 'true'
@@ -79,11 +81,11 @@ jobs:
           EXIT_CODE: ${{ steps.crawl.outputs.exit_code }}
         run: |
           if [ ! -f "$RUNNER_TEMP/run/run_summary.json" ]; then echo "no run summary, nothing to load"; exit 0; fi
-          args=(--run-dir "$RUNNER_TEMP/run" --run-id "$RUN_ID")
+          args=(--run-dir "$RUNNER_TEMP/run" --run-id "$RUN_ID" --workflow daily-pipeline)
           if [ -n "$EXIT_CODE" ]; then args+=(--exit-code "$EXIT_CODE"); fi
-          uv run python -m price_radar.storage.landing load "${args[@]}"
+          uv run python -m price_radar.storage.snapshots load "${args[@]}"
       - name: Database size
-        # raw.landing has no retention until Phase 1; warn at 70% of Neon's free storage.
+        # No retention yet (it starts with the summary tables of Phase 2); warn at 70% of Neon's free storage.
         if: always() && steps.guard.outputs.skip != 'true'
         continue-on-error: true
-        run: uv run python -m price_radar.storage.landing db-size --warn-mb 350 | tee -a "$GITHUB_STEP_SUMMARY"
+        run: uv run python -m price_radar.storage.snapshots db-size --warn-mb 350 | tee -a "$GITHUB_STEP_SUMMARY"

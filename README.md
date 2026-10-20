@@ -94,10 +94,11 @@ uv run python -m price_radar.ingest.run --source getmobil --out data/runs/getmob
 The manual `access-test` workflow runs the same command on GitHub Actions with `--summary-only`; it keeps no data
 and writes only counts and timings to the job summary.
 
-The `trial-crawl` workflow (Phase 0) runs every morning at 04:47 Turkey time, with a fallback at 08:47 that does
-nothing if that day's run is already loaded (GitHub sometimes drops scheduled runs). Each source gets one full run,
-loaded into the `raw.landing` table in Neon with `python -m price_radar.storage.landing load`. Nothing is uploaded as
-an artifact. It covers Getmobil.
+The `daily-pipeline` workflow runs every morning at 04:47 Turkey time, with a fallback at 08:47 that does nothing if
+that day's run is already loaded (GitHub sometimes drops scheduled runs). Each source (Getmobil) gets one full run,
+loaded into Neon with `python -m price_radar.storage.snapshots load`: one row per offer and day in
+`raw.offer_snapshots` (the payload only when the offer changed), rejected offers in `raw.rejected_offers` and one
+health row per run in `ops.pipeline_runs`. Nothing is uploaded as an artifact.
 
 The `fx-rates` workflow runs every morning and stores the TCMB bulletins that are not stored yet in `ref.fx_rates`
 (`python -m price_radar.fx.tcmb`, then `python -m price_radar.storage.fx_rates load`). Prices of day D are converted
