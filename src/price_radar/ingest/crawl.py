@@ -35,7 +35,8 @@ class Client(Protocol):
 
 @dataclass
 class CrawlStats:
-    """What one source run did. Counts are exact; the lists keep the first ``MAX_EXAMPLES`` entries."""
+    """What one source run did. Counts are exact; the example lists keep the first ``MAX_EXAMPLES`` entries, while
+    ``rejections`` keeps every rejected offer for ``raw.rejected_offers``."""
 
     source: str
     responses: Counter[str] = field(default_factory=Counter)
@@ -53,6 +54,7 @@ class CrawlStats:
     counters: Counter[str] = field(default_factory=Counter)
     observed: dict[str, Counter[str]] = field(default_factory=dict)  # values seen in the run, e.g. warranty types
     discovery: dict[str, Any] = field(default_factory=dict)
+    rejections: list[dict[str, str]] = field(default_factory=list)
     stop_reason: str | None = None
 
     def refuse(self, kind: str, url: str, reason: str) -> None:
@@ -70,6 +72,13 @@ class CrawlStats:
     def observe(self, name: str, value: str) -> None:
         """Count one occurrence of ``value`` under ``name``; the run summary lists every distinct value."""
         self.observed.setdefault(name, Counter())[value] += 1
+
+    def reject_offer(self, rejection: str) -> None:
+        """Record an offer that failed validation; ``rejection`` is "<offer key>: <reason>" as the adapters word it."""
+        offer_key, _, reason = rejection.partition(": ")
+        self.counters["offers_rejected"] += 1
+        self.rejections.append({"offer_key": offer_key, "reason": reason or rejection})
+        self.warn(f"rejected offer {rejection}")
 
     def warn(self, message: str) -> None:
         self.warning_count += 1

@@ -518,8 +518,7 @@ def _variant_offers(ctx: CrawlContext, variant: ListingVariant) -> Iterator[RawO
     for warning in page.warnings:
         ctx.stats.warn(f"variant {page.variant_id}: {warning}")
     for reason in page.rejected:
-        ctx.stats.counters["offers_rejected"] += 1
-        ctx.stats.warn(f"rejected offer {reason}")
+        ctx.stats.reject_offer(reason)
     for problem in page.list_price_problems:
         ctx.stats.counters["implausible_list_prices"] += 1
         ctx.stats.warn(f"implausible list price not used: {problem}")

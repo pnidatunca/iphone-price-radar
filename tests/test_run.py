@@ -50,7 +50,9 @@ def cli(args: list[str], site: FakeSite) -> int:
 
 def test_cli_writes_offers_and_a_summary(tmp_path):
     assert cli(["--source", "getmobil", "--out", str(tmp_path)], getmobil_site()) == 0
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["offers.jsonl", "run_summary.json"]  # never raw HTML
+    names = sorted(path.name for path in tmp_path.iterdir())
+    assert names == ["offers.jsonl", "rejected.jsonl", "run_summary.json"]  # never raw HTML
+    assert (tmp_path / "rejected.jsonl").read_text("utf-8") == ""  # no offer of the fixtures fails validation
     offers = [
         RawOffer.model_validate_json(line) for line in (tmp_path / "offers.jsonl").read_text("utf-8").splitlines()
     ]

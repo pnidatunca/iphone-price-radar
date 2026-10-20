@@ -799,8 +799,7 @@ def _product_offers(ctx: CrawlContext, card: ListingCard, models: dict[int, str]
     for warning in page.warnings:
         ctx.stats.warn(f"product {page.content_id}: {warning}")
     for reason in page.rejected:
-        counters["offers_rejected"] += 1
-        ctx.stats.warn(f"rejected offer {reason}")
+        ctx.stats.reject_offer(reason)
     for problem in page.list_price_problems:
         counters["implausible_list_prices"] += 1
         ctx.stats.warn(f"implausible list price not used: {problem}")

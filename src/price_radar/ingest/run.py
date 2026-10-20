@@ -2,7 +2,8 @@
 
     python -m price_radar.ingest.run --source getmobil --out data/runs/getmobil [--max-requests 40]
 
-Writes ``DIR/offers.jsonl`` (one RawOffer per line) and ``DIR/run_summary.json``; raw HTML is never written. With
+Writes ``DIR/offers.jsonl`` (one RawOffer per line), ``DIR/rejected.jsonl`` (offer key and reason of every offer that
+failed validation) and ``DIR/run_summary.json``; raw HTML is never written. With
 ``--summary-only`` no offers are written and the summary is also printed to stdout as Markdown, ready to be appended to
 a GitHub job summary. The summary holds counts, timings, error reasons and the values seen in a few vocabulary fields
 (``observed``: Trendyol's warranty types), no catalogue content, because job summaries of a public repository are
@@ -132,6 +133,10 @@ def main(
     (args.out / "run_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    if not args.summary_only:
+        with _open(args.out / "rejected.jsonl") as rejected_file:
+            for rejection in stats.rejections:
+                rejected_file.write(json.dumps(rejection, ensure_ascii=False) + "\n")
     log.info(
         "%s: %s offers (%s in stock), stop reason: %s",
         args.source,
