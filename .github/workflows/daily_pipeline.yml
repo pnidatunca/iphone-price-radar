@@ -56,11 +56,18 @@ jobs:
         if: github.event_name == 'schedule'
         continue-on-error: true
         run: echo "skip=$(uv run python -m price_radar.storage.snapshots loaded-today --source "$SOURCE")" >> "$GITHUB_OUTPUT"
+      - name: Recently seen variants
+        # Listing drift: a model listing that stays incomplete after its re-read is completed with the variants seen
+        # on the last 7 days. Without the list (a database hiccup) the crawl runs as before.
+        if: steps.guard.outputs.skip != 'true' && matrix.source == 'getmobil'
+        continue-on-error: true
+        run: uv run python -m price_radar.storage.snapshots recent-variants --source "$SOURCE" --days 7 --out "$RUNNER_TEMP/recent-variants.jsonl"
       - name: Crawl
         id: crawl
         if: steps.guard.outputs.skip != 'true'
         run: |
           args=(--source "$SOURCE" --max-requests "$MAX_REQUESTS" --out "$RUNNER_TEMP/run" --markdown)
+          if [ -s "$RUNNER_TEMP/recent-variants.jsonl" ]; then args+=(--recent-variants "$RUNNER_TEMP/recent-variants.jsonl"); fi
           set +e
           uv run python -m price_radar.ingest.run "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
           code=${PIPESTATUS[0]}

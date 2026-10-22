@@ -82,6 +82,28 @@ def test_summary_only_prints_markdown_and_writes_no_offers(tmp_path, capsys):
     assert "Example Store" not in markdown
 
 
+def test_recent_variants_complete_a_drifted_listing(tmp_path):
+    recent = tmp_path / "recent.jsonl"
+    url = f"https://getmobil.com{CATALOG}/iphone-13/apple-iphone-13-128-gb-siyah-900104/"
+    recent.write_text(
+        json.dumps({"model": "iPhone 13", "url": url, "last_seen": "2026-10-11"}) + "\n", encoding="utf-8"
+    )
+    site = getmobil_site(**{f"{CATALOG}/iphone-13/?pageNumber=2": page("getmobil/listing_iphone-13_p2_drift.html")})
+    assert cli(["--source", "getmobil", "--out", str(tmp_path / "out"), "--recent-variants", str(recent)], site) == 0
+    summary = json.loads((tmp_path / "out" / "run_summary.json").read_text("utf-8"))
+    assert summary["counters"]["variants_from_history"] == 1
+    assert summary["options"]["recent_variants"] == str(recent)
+    assert f"{CATALOG}/iphone-13/apple-iphone-13-128-gb-siyah-900104/" in site.requested
+
+
+def test_a_malformed_recent_variants_file_is_a_usage_error(tmp_path):
+    bad = tmp_path / "recent.jsonl"
+    bad.write_text('{"model": "iPhone 13"}\n', encoding="utf-8")
+    site = getmobil_site()
+    assert cli(["--source", "getmobil", "--out", str(tmp_path / "out"), "--recent-variants", str(bad)], site) == 2
+    assert site.requested == []
+
+
 def test_a_disabled_source_is_refused(tmp_path, capsys):
     site = trendyol_site()
     assert cli(["--source", "trendyol", "--out", str(tmp_path)], site) == 2  # dropped on 19.10.2026

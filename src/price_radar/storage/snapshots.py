@@ -4,6 +4,7 @@
     python -m price_radar.storage.snapshots loaded-today --source SOURCE
     python -m price_radar.storage.snapshots db-size [--warn-mb 350]
     python -m price_radar.storage.snapshots migrate-landing
+    python -m price_radar.storage.snapshots recent-variants --source SOURCE --days 7 --out FILE
 
 One row per offer and day. ``payload`` is stored only when the offer's ``payload_hash`` differs from the hash of its
 latest earlier row, so an offer that does not change costs one narrow row a day instead of its whole payload (plan
@@ -22,7 +23,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,13 @@ cross join lateral (select l.offer as o) d
 order by l.snapshot_date, l.offer_key
 on conflict (snapshot_date, offer_key) do nothing
 """
+RECENT_VARIANTS = """
+select model, product_url, max(snapshot_date) as last_seen
+from raw.offer_snapshots
+where platform = %s and snapshot_date >= %s::date - %s::int and snapshot_date < %s::date
+group by model, product_url
+order by model, last_seen desc, product_url
+"""
 LAST_HASHES = """
 select distinct on (offer_key) offer_key, payload_hash
 from raw.offer_snapshots
@@ -310,6 +318,15 @@ def migrate_landing(conn: psycopg.Connection) -> tuple[int, int]:
     return runs, offers
 
 
+def recent_variants(conn: psycopg.Connection, source: str, today: date, days: int) -> list[dict[str, str]]:
+    """The pages of each model seen on the ``days`` days before ``today``, most recent first. Getmobil reads them when a
+    model listing drifts (``getmobil._recent_variants``)."""
+    if conn.execute("select to_regclass('raw.offer_snapshots')").fetchone()[0] is None:
+        return []
+    rows = conn.execute(RECENT_VARIANTS, (source, today, days, today)).fetchall()
+    return [{"model": model, "url": url, "last_seen": seen.isoformat()} for model, url, seen in rows]
+
+
 def size_report(size_bytes: int, warn_mb: float, limit_mb: float) -> tuple[str, bool]:
     """A one-line Markdown report of the database size and whether it crossed the warning threshold."""
     size_mb = size_bytes / 1024 / 1024
@@ -337,6 +354,10 @@ def main(argv: list[str] | None = None) -> int:
     size_cmd.add_argument("--warn-mb", type=float, default=350.0, help="warning threshold (default 70%% of 500 MB)")
     size_cmd.add_argument("--limit-mb", type=float, default=500.0, help="free storage limit (Neon, last known)")
     commands.add_parser("migrate-landing", help="copy the Phase 0 landing tables into these tables")
+    recent_cmd = commands.add_parser("recent-variants", help="write the pages seen on recent days, per model")
+    recent_cmd.add_argument("--source", required=True)
+    recent_cmd.add_argument("--days", type=int, default=7)
+    recent_cmd.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
 
@@ -352,6 +373,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "loaded-today":
             today = datetime.now(UTC).astimezone(TURKEY).date().isoformat()
             print("true" if loaded_today(conn, args.source, today) else "false")
+        elif args.command == "recent-variants":
+            today = datetime.now(UTC).astimezone(TURKEY).date()
+            records = recent_variants(conn, args.source, today, args.days)
+            args.out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
+            log.info("%s recently seen %s pages written to %s", len(records), args.source, args.out)
         elif args.command == "migrate-landing":
             runs, offers = migrate_landing(conn)
             log.info("%s runs and %s offer rows copied from raw.landing", runs, offers)

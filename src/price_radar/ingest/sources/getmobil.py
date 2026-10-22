@@ -58,6 +58,9 @@ URL_FORMS = (
 # The link a buyer follows to one seller's offer. It is built, never requested.
 OFFER_FORMS = (urls.UrlForm("offer", re.compile(_VARIANT_PATH), ("merchantId",)),)
 VARIANT_ID = re.compile(r"-(\d+)/$")
+# Listing drift (19.10.2026): about 2-3 variants a day stay missing after the re-read. A drifted model is completed with
+# at most this many variants seen on recent days.
+MAX_RECENT_PER_MODEL = 15
 SELLER_LABEL = re.compile(r"Tüm satıcıları gör(?:<!-- -->)?\s*\((?:<!-- -->)?(\d+)")
 # Seller fields worth keeping; names, slugs and store links are deliberately absent.
 SELLER_FIELDS = {
@@ -434,9 +437,15 @@ def _discover_model(ctx: CrawlContext, link: ModelLink) -> dict[int, ListingVari
         "seen": len(found),
         "refetched": refetched,
         "missing": max(0, (total or 0) - len(found)),
+        "from_history": 0,
     }
+    if record["missing"]:
+        recent = _recent_variants(ctx, link, found)
+        record["from_history"] = len(recent)
+        ctx.stats.counters["variants_from_history"] += len(recent)
+        found |= recent
     ctx.stats.discovery["models"].append(record)
-    ctx.stats.counters["variants_discovered"] += len(found)
+    ctx.stats.counters["variants_discovered"] += record["seen"]
     if total is None:
         ctx.stats.warn(f"{link.slug}: listing unavailable")
     elif record["missing"]:
@@ -445,6 +454,25 @@ def _discover_model(ctx: CrawlContext, link: ModelLink) -> dict[int, ListingVari
             f" {record['missing']} missing"
         )
     return found
+
+
+def _recent_variants(ctx: CrawlContext, link: ModelLink, found: dict[int, ListingVariant]) -> dict[int, ListingVariant]:
+    """Variants of a drifted model seen on recent days but missing from today's listing, most recent first and at most
+    ``MAX_RECENT_PER_MODEL``. Their pages are read too: a sold-out page yields no offer and a removed one answers 404,
+    so a wrong guess costs one request."""
+    recent: dict[int, ListingVariant] = {}
+    for url in ctx.recent_variant_urls.get(link.model or "", ()):
+        try:
+            form = check_url(url)
+        except urls.UrlNotAllowed:
+            continue  # e.g. a page from before Getmobil's catalogue moved on 15.10.2026
+        variant_id = variant_id_of(url)
+        if form != "variant" or variant_id is None or variant_id in found or variant_id in recent:
+            continue
+        recent[variant_id] = ListingVariant(variant_id, url)
+        if len(recent) >= MAX_RECENT_PER_MODEL:
+            break
+    return recent
 
 
 def _read_model_listing(ctx: CrawlContext, link: ModelLink) -> dict[int, ListingPage | None]:

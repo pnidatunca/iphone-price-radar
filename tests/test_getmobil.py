@@ -176,7 +176,15 @@ def test_an_incomplete_listing_is_read_once_more():
     list(getmobil.crawl(ctx))
     assert fake.requested.count(f"{CATALOG}/iphone-13/?pageNumber=1") == 2
     record = ctx.stats.discovery["models"][0]
-    assert record == {"model": "iPhone 13", "slug": "iphone-13", "total": 3, "seen": 3, "refetched": True, "missing": 0}
+    assert record == {
+        "model": "iPhone 13",
+        "slug": "iphone-13",
+        "total": 3,
+        "seen": 3,
+        "refetched": True,
+        "missing": 0,
+        "from_history": 0,
+    }
 
 
 def test_what_is_still_missing_after_the_re_fetch_is_reported():
@@ -186,6 +194,44 @@ def test_what_is_still_missing_after_the_re_fetch_is_reported():
     record = ctx.stats.discovery["models"][0]
     assert (record["refetched"], record["seen"], record["missing"]) == (True, 2, 1)
     assert any("1 missing" in warning for warning in ctx.stats.warnings)
+
+
+def test_a_drifted_listing_is_completed_with_recently_seen_variants():
+    fake = site(**{f"{CATALOG}/iphone-13/?pageNumber=2": page("getmobil/listing_iphone-13_p2_drift.html")})
+    recent = {
+        "iPhone 13": (
+            f"{BASE}{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-900101/",  # listed today: not read twice
+            f"{BASE}{CATALOG}/iphone-13/apple-iphone-13-128-gb-siyah-900104/",  # missing today
+            f"{BASE}/satin-al/cep-telefonu/iphone-ios-telefonlar/apple/iphone-13/apple-iphone-13-64-gb-900199/",
+        )
+    }
+    ctx = fake.context(recent_variant_urls=recent)
+    list(getmobil.crawl(ctx))
+    record = ctx.stats.discovery["models"][0]
+    assert (record["seen"], record["missing"], record["from_history"]) == (2, 1, 1)
+    assert ctx.stats.counters["variants_from_history"] == 1
+    assert fake.requested.count(f"{CATALOG}/iphone-13/apple-iphone-13-128-gb-siyah-900104/") == 1
+    assert fake.requested.count(f"{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-900101/") == 1
+    assert not any("900199" in path for path in fake.requested)  # the catalogue path before 15.10.2026 is refused
+
+
+def test_recent_variants_are_not_read_for_a_complete_listing():
+    recent = {"iPhone 13": (f"{BASE}{CATALOG}/iphone-13/apple-iphone-13-256-gb-mavi-900105/",)}
+    fake = site()
+    ctx = fake.context(recent_variant_urls=recent)
+    list(getmobil.crawl(ctx))
+    assert not any("900105" in path for path in fake.requested)
+    assert ctx.stats.counters["variants_from_history"] == 0
+
+
+def test_recent_variants_per_model_are_capped(monkeypatch):
+    monkeypatch.setattr(getmobil, "MAX_RECENT_PER_MODEL", 2)
+    fake = site(**{f"{CATALOG}/iphone-13/?pageNumber=2": page("getmobil/listing_iphone-13_p2_drift.html")})
+    urls = tuple(f"{BASE}{CATALOG}/iphone-13/apple-iphone-13-128-gb-mavi-90020{i}/" for i in range(5))
+    ctx = fake.context(recent_variant_urls={"iPhone 13": urls})
+    list(getmobil.crawl(ctx))
+    assert ctx.stats.discovery["models"][0]["from_history"] == 2
+    assert [p for p in fake.requested if "9002" in p] == [urls[0][len(BASE) :], urls[1][len(BASE) :]]
 
 
 def test_a_failed_listing_page_triggers_the_re_fetch():

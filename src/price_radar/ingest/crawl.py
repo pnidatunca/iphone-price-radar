@@ -99,6 +99,9 @@ class CrawlContext:
     scope: ScopeSettings
     stats: CrawlStats
     max_variants: int | None = None
+    # Variant pages seen on recent days, per canonical model name and most recent first: they complete a model listing
+    # that drifted (Getmobil). Empty when the caller has none.
+    recent_variant_urls: dict[str, tuple[str, ...]] = field(default_factory=dict)
     now: Callable[[], datetime] = utc_now
     snapshot_date: date = field(init=False)
 

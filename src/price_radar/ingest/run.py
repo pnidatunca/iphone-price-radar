@@ -57,6 +57,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         type=_positive_int,
         help="at most this many variant pages (Getmobil) or product pages (Trendyol)",
     )
+    parser.add_argument(
+        "--recent-variants",
+        type=Path,
+        help="JSON lines of {model, url} seen on recent days, most recent first; they complete a drifted listing",
+    )
     parser.add_argument("--out", type=Path, required=True, help="output directory")
     parser.add_argument("--summary-only", action="store_true", help="write no offers; print the summary as Markdown")
     parser.add_argument("--markdown", action="store_true", help="also print the summary as Markdown (counts only)")
@@ -78,6 +83,11 @@ def main(
     if source is None or not source.enabled:
         print(f"source {args.source} is not enabled in config/settings.yaml", file=sys.stderr)
         return 2
+    try:
+        recent = read_recent_variants(args.recent_variants) if args.recent_variants else {}
+    except (OSError, UsageError) as err:
+        print(f"cannot use --recent-variants: {err}", file=sys.stderr)
+        return 2
     policy = settings.crawler.policy()
     if args.max_requests:
         policy = dataclasses.replace(policy, max_requests=args.max_requests)
@@ -94,6 +104,7 @@ def main(
             scope=settings.scope,
             stats=stats,
             max_variants=args.max_variants,
+            recent_variant_urls=recent,
             now=now,
         )
         seen: set[str] = set()
@@ -191,6 +202,7 @@ def build_summary(
         "options": {
             "max_requests": args.max_requests,
             "max_variants": args.max_variants,
+            "recent_variants": str(args.recent_variants) if args.recent_variants else None,
             "summary_only": args.summary_only,
             "markdown": args.markdown,
         },
@@ -238,6 +250,23 @@ def summary_markdown(summary: dict[str, Any], title: str = "Access test") -> str
             lines += ["", f"{title} (first {len(examples)}):", ""]
             lines += [f"- {example['kind']}: {_cell(example[field])}" for example in examples]
     return "\n".join(lines) + "\n\n"
+
+
+def read_recent_variants(path: Path) -> dict[str, tuple[str, ...]]:
+    """Pages per model name from a JSON-lines file of {"model": ..., "url": ...}, in file order."""
+    pages: dict[str, list[str]] = {}
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+            model, url = record["model"], record["url"]
+        except (ValueError, KeyError, TypeError) as err:
+            raise UsageError(f"{path}:{number}: not a JSON record with a model and a url") from err
+        if not isinstance(model, str) or not isinstance(url, str):
+            raise UsageError(f"{path}:{number}: model and url must be strings")
+        pages.setdefault(model, []).append(url)
+    return {model: tuple(urls) for model, urls in pages.items()}
 
 
 def _open(path: Path):
