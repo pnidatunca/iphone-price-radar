@@ -1,0 +1,31 @@
+name: health-check
+
+# Afternoon watchdog (plan 12.5): a nightly run that GitHub never started sends no failure e-mail, so this job checks
+# ops.pipeline_runs once more after the fallback window. It sends a Telegram message only when something is wrong
+# and turns red on an error, which GitHub mails to the repository owner.
+
+on:
+  schedule:
+    - cron: "17 14 * * *"  # 17:17 Turkey time; the nightly run and its fallback start by about 11:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Health check
+        run: |
+          uv run python -m price_radar.monitoring.health --source getmobil --context "afternoon check" \
+            --annotate --notify problems

@@ -61,16 +61,21 @@ def load_settings(path: Path = SETTINGS_PATH) -> Settings:
         return Settings.model_validate(yaml.safe_load(f))
 
 
-def database_url(env_file: Path = ENV_FILE) -> str | None:
-    """Neon connection string from the environment (GitHub Actions secret). For local runs a NEON_DATABASE_URL line
-    in the repository's .env file is the fallback. It never comes from the settings file."""
-    value = os.environ.get("NEON_DATABASE_URL")
+def secret(name: str, env_file: Path = ENV_FILE) -> str | None:
+    """A secret from the environment (a GitHub Actions secret). For local runs a ``NAME=value`` line in the
+    repository's .env file is the fallback. Secrets never come from the settings file."""
+    value = os.environ.get(name)
     if value:
         return value
     if not env_file.exists():
         return None
     for raw in env_file.read_text(encoding="utf-8-sig").splitlines():
         key, sep, rest = raw.strip().partition("=")
-        if sep and key.strip() == "NEON_DATABASE_URL":
+        if sep and key.strip() == name:
             return rest.strip().strip("\"'") or None
     return None
+
+
+def database_url(env_file: Path = ENV_FILE) -> str | None:
+    """Neon connection string (``NEON_DATABASE_URL``), see ``secret``."""
+    return secret("NEON_DATABASE_URL", env_file)

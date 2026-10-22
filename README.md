@@ -103,3 +103,10 @@ health row per run in `ops.pipeline_runs`. Nothing is uploaded as an artifact.
 The `fx-rates` workflow runs every morning and stores the TCMB bulletins that are not stored yet in `ref.fx_rates`
 (`python -m price_radar.fx.tcmb`, then `python -m price_radar.storage.fx_rates load`). Prices of day D are converted
 with the USD forex selling rate announced on the last business day before D.
+
+Health checks (`python -m price_radar.monitoring.health`) run after every nightly run and again in the afternoon
+(`health-check` workflow), because a run that never started sends no failure e-mail. Errors: no complete run today
+or yesterday, offers below half of the 7-day average, listing pages that flag the crawler as a bot. Warnings: the
+request budget nearly spent, more than 5% rejected offers, stale TCMB rates. An error turns the job red; with the
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` secrets set, the nightly summary and every finding also go to Telegram
+(`python -m price_radar.notify.telegram chat-id` finds the chat id after you message the bot).

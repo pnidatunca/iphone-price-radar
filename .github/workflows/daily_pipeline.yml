@@ -96,3 +96,12 @@ jobs:
         if: always() && steps.guard.outputs.skip != 'true'
         continue-on-error: true
         run: uv run python -m price_radar.storage.snapshots db-size --warn-mb 350 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Health check
+        # The day's summary and any finding go to Telegram (once its secrets exist); an error turns the job red.
+        if: always() && steps.guard.outputs.skip != 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          uv run python -m price_radar.monitoring.health --source "$SOURCE" --context "after the nightly run" \
+            --annotate --notify always
