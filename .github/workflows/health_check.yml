@@ -8,6 +8,14 @@ on:
   schedule:
     - cron: "17 14 * * *"  # 17:17 Turkey time; the nightly run and its fallback start by about 11:00 UTC
   workflow_dispatch:
+    inputs:
+      source:
+        # "trendyol" has no runs since it was dropped, so it is a deliberate failure: it shows that an error turns the
+        # job red and reaches Telegram (Phase 1 done criterion).
+        description: Source to check ("trendyol" tests the alerts)
+        type: choice
+        options: [getmobil, trendyol]
+        default: getmobil
 
 permissions:
   contents: read
@@ -20,6 +28,7 @@ jobs:
       NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SOURCE: ${{ inputs.source || 'getmobil' }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
@@ -27,5 +36,5 @@ jobs:
         run: uv sync --locked
       - name: Health check
         run: |
-          uv run python -m price_radar.monitoring.health --source getmobil --context "afternoon check" \
+          uv run python -m price_radar.monitoring.health --source "$SOURCE" --context "afternoon check" \
             --annotate --notify problems
