@@ -3,7 +3,6 @@
     python -m price_radar.storage.snapshots load --run-dir DIR --run-id ID --workflow NAME [--exit-code N]
     python -m price_radar.storage.snapshots loaded-today --source SOURCE
     python -m price_radar.storage.snapshots db-size [--warn-mb 350]
-    python -m price_radar.storage.snapshots migrate-landing
     python -m price_radar.storage.snapshots recent-variants --source SOURCE --days 7 --out FILE
 
 One row per offer and day. ``payload`` is stored only when the offer's ``payload_hash`` differs from the hash of its
@@ -12,8 +11,8 @@ latest earlier row, so an offer that does not change costs one narrow row a day 
 first one missed and changes none. Every run, failed ones included, gets a row in ops.pipeline_runs, and a run that is
 already there is not loaded again.
 
-``migrate-landing`` copies the Phase 0 tables raw.landing and raw.landing_runs (decision K19) into these tables inside
-the database. It never drops them.
+The Phase 0 tables raw.landing and raw.landing_runs (decision K19) were copied here on 20.10.2026 and dropped on
+24.10.2026.
 """
 
 from __future__ import annotations
@@ -146,39 +145,6 @@ RUN_COLUMNS = (
     "runtime_seconds",
     "summary",
 )
-MIGRATE_RUNS = """
-insert into ops.pipeline_runs (run_id, workflow, source, snapshot_date, started_at, finished_at, exit_code, stop_reason,
-                               requests, offers, in_stock_offers, rejected, warnings, failures, refusals,
-                               runtime_seconds, summary)
-select run_id, 'trial-crawl', source, (summary->>'snapshot_date')::date, started_at, finished_at, exit_code,
-       coalesce(summary->>'stop_reason', 'completed'), (summary->'requests'->>'made')::int,
-       (summary->>'offers')::int, (summary->>'in_stock_offers')::int,
-       coalesce((summary->'counters'->>'offers_rejected')::int, 0), (summary->'warnings'->>'count')::int,
-       (summary->'failures'->>'count')::int, (summary->'refusals'->>'count')::int,
-       (summary->>'runtime_seconds')::numeric, summary
-from raw.landing_runs
-on conflict (run_id) do nothing
-"""
-MIGRATE_OFFERS = """
-insert into raw.offer_snapshots (snapshot_date, offer_key, platform, run_id, fetched_at, model, storage_gb, color,
-                                 condition_raw, sim_type, battery_raw, warranty_raw, sku, condition_flags, seller_id,
-                                 is_buybox, price_tl, list_price_tl, promo_pct, stock_qty, in_stock, product_url,
-                                 offer_url, payload, payload_hash, parser_version)
-select l.snapshot_date, l.offer_key, l.source, l.run_id, l.fetched_at, o->>'model', (o->>'storage_gb')::int,
-       o->>'color', o->>'condition_raw', o->>'sim_type', o->>'battery_raw', o->>'warranty_raw', o->>'sku',
-       array(select jsonb_array_elements_text(coalesce(o->'condition_flags', '[]'::jsonb))),
-       (o->>'seller_id')::bigint, (o->>'is_buybox')::boolean, (o->>'price_tl')::numeric,
-       (o->>'list_price_tl')::numeric, (o->>'promo_pct')::numeric, (o->>'stock_qty')::int,
-       (o->>'in_stock')::boolean, o->>'product_url', o->>'offer_url',
-       case when o->>'payload_hash' is distinct from lag(o->>'payload_hash')
-                 over (partition by l.offer_key order by l.snapshot_date, l.fetched_at)
-            then o->'payload' end,
-       o->>'payload_hash', o->>'parser_version'
-from raw.landing l
-cross join lateral (select l.offer as o) d
-order by l.snapshot_date, l.offer_key
-on conflict (snapshot_date, offer_key) do nothing
-"""
 RECENT_VARIANTS = """
 select model, product_url, max(snapshot_date) as last_seen
 from raw.offer_snapshots
@@ -304,20 +270,6 @@ def loaded_today(conn: psycopg.Connection, source: str, snapshot_date: str) -> b
     return row is not None
 
 
-def migrate_landing(conn: psycopg.Connection) -> tuple[int, int]:
-    """Copy every Phase 0 run from raw.landing_runs and raw.landing inside the database, in one transaction, and
-    return (runs, offer rows) inserted. The documents were validated as RawOffer when they were collected and keep
-    the hash they were stored with; the payload is kept on the first day of an offer and whenever its hash differs
-    from the day before, as in ``load``. Moving the data through the client would cost minutes on a slow network."""
-    if conn.execute("select to_regclass('raw.landing_runs')").fetchone()[0] is None:
-        return 0, 0
-    with conn.transaction():
-        conn.execute(DDL)
-        runs = conn.execute(MIGRATE_RUNS).rowcount
-        offers = conn.execute(MIGRATE_OFFERS).rowcount
-    return runs, offers
-
-
 def recent_variants(conn: psycopg.Connection, source: str, today: date, days: int) -> list[dict[str, str]]:
     """The pages of each model seen on the ``days`` days before ``today``, most recent first. Getmobil reads them when a
     model listing drifts (``getmobil._recent_variants``)."""
@@ -353,7 +305,6 @@ def main(argv: list[str] | None = None) -> int:
     size_cmd = commands.add_parser("db-size", help="report the database size; warn when it nears the free limit")
     size_cmd.add_argument("--warn-mb", type=float, default=350.0, help="warning threshold (default 70%% of 500 MB)")
     size_cmd.add_argument("--limit-mb", type=float, default=500.0, help="free storage limit (Neon, last known)")
-    commands.add_parser("migrate-landing", help="copy the Phase 0 landing tables into these tables")
     recent_cmd = commands.add_parser("recent-variants", help="write the pages seen on recent days, per model")
     recent_cmd.add_argument("--source", required=True)
     recent_cmd.add_argument("--days", type=int, default=7)
@@ -378,9 +329,6 @@ def main(argv: list[str] | None = None) -> int:
             records = recent_variants(conn, args.source, today, args.days)
             args.out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
             log.info("%s recently seen %s pages written to %s", len(records), args.source, args.out)
-        elif args.command == "migrate-landing":
-            runs, offers = migrate_landing(conn)
-            log.info("%s runs and %s offer rows copied from raw.landing", runs, offers)
         else:
             size = conn.execute("select pg_database_size(current_database())").fetchone()[0]
             text, warn = size_report(size, args.warn_mb, args.limit_mb)
