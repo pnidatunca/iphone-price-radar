@@ -124,7 +124,7 @@ takes the connection from `NEON_DATABASE_URL` and never prints it):
 |---|---|---|
 | Staging (views) | `staging` | `stg_offer_snapshots` rebuilds every day's full offer: the payload of the offer's latest change, and list prices of rows stored before the column existed; `stg_fx_rates`, `stg_devices` |
 | Core | `core` | `dim_device`, `dim_condition` (seed `ref.condition_map`), `dim_seller` (numeric ids only), `fct_offer_daily`: one row per offer and day with its segment and its price in lira and in dollars (the TCMB rate announced before the day) |
-| Marts (permanent) | `marts` | `daily_segment_prices` (day × segment: offers and price distribution), `daily_market`, `offer_lifecycle` (one row per offer over its life), `price_index_basket` and `price_index` (fixed-basket refurbished iPhone price index, TL and USD, first draft) |
+| Marts (permanent) | `marts` | `daily_segment_prices` (day × segment: offers and price distribution), `daily_market`, `daily_condition_premiums` (what a seller asks for a condition against its own Mükemmel offer of the same device), `offer_lifecycle` (one row per offer over its life), `price_index_basket` and `price_index` (fixed-basket refurbished iPhone price index, TL and USD, first draft) |
 
 A segment is model + storage + condition. The marts are incremental with `full_refresh: false`: their raw detail is
 deleted after 90 days, so each run computes the last 3 days again (a later run may add offers to them) and keeps the
@@ -132,6 +132,12 @@ rest; [docs/reprocessing.md](docs/reprocessing.md) describes a deliberate rebuil
 nightly run and goes to Telegram; an offer whose model or condition label the reference tables lack is a warning. The
 `transform` workflow runs the build alone. CI builds the project twice on a throwaway PostgreSQL with synthetic
 offers and requires a full rebuild to give the same marts.
+
+The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,
+the price index, depreciation by model age and the price of each condition. It reads the marts only, through a
+read-only database role, and caches them for two hours; [docs/streamlit.md](docs/streamlit.md) describes the role and
+the deployment on Streamlit Community Cloud. Run it locally with
+`uv run --group app streamlit run app/streamlit_app.py` and `RADAR_READER_URL` set.
 
 `dbt/seeds/devices.csv` is the device reference: one row per model and storage size from the iPhone X on, with
 generation, series, US release date, the US launch price Apple announced and Apple Türkiye's launch price (TL), each

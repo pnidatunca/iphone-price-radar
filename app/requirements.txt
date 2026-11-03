@@ -1,0 +1,4 @@
+# Dependencies of the Streamlit app on Streamlit Community Cloud, which reads this file (the entry point's directory
+# comes before the repository root). Same versions as the "app" group of uv.lock.
+streamlit==1.66.1
+psycopg[binary]==3.3.6
