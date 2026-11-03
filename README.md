@@ -83,6 +83,9 @@ uv run pytest         # run the tests
 uv run ruff check .   # lint
 ```
 
+The dbt tests (`tests/test_dbt_models.py`) need a local PostgreSQL they may wipe:
+`RADAR_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres uv run pytest tests/test_dbt_models.py`.
+
 Configuration lives in `config/settings.yaml`. Secrets (database URL, tokens) are read from environment variables;
 copy `.env.example` to `.env` for local runs.
 
@@ -113,6 +116,22 @@ unless the DagsHub API reports the repository as private. Each file is read back
 (rows, first and last day, SHA-256 of the rows and of the file); detail rows will only be deleted (plan 8.3) once their
 week is recorded there. Weeks not archived yet are caught up, the last two weeks are compared again and rewritten if
 rows were added later, and a manual run can pick one week (`--week 2026-W44`).
+
+After loading, the nightly job builds the dbt project in `dbt/` (`python -m price_radar.transform.runner build`, which
+takes the connection from `NEON_DATABASE_URL` and never prints it):
+
+| Layer | Schema | Models |
+|---|---|---|
+| Staging (views) | `staging` | `stg_offer_snapshots` rebuilds every day's full offer: the payload of the offer's latest change, and list prices of rows stored before the column existed; `stg_fx_rates`, `stg_devices` |
+| Core | `core` | `dim_device`, `dim_condition` (seed `ref.condition_map`), `dim_seller` (numeric ids only), `fct_offer_daily`: one row per offer and day with its segment and its price in lira and in dollars (the TCMB rate announced before the day) |
+| Marts (permanent) | `marts` | `daily_segment_prices` (day × segment: offers and price distribution), `daily_market`, `offer_lifecycle` (one row per offer over its life), `price_index_basket` and `price_index` (fixed-basket refurbished iPhone price index, TL and USD, first draft) |
+
+A segment is model + storage + condition. The marts are incremental with `full_refresh: false`: their raw detail is
+deleted after 90 days, so each run computes the last 3 days again (a later run may add offers to them) and keeps the
+rest; [docs/reprocessing.md](docs/reprocessing.md) describes a deliberate rebuild. A failed model or test fails the
+nightly run and goes to Telegram; an offer whose model or condition label the reference tables lack is a warning. The
+`transform` workflow runs the build alone. CI builds the project twice on a throwaway PostgreSQL with synthetic
+offers and requires a full rebuild to give the same marts.
 
 `dbt/seeds/devices.csv` is the device reference: one row per model and storage size from the iPhone X on, with
 generation, series, US release date, the US launch price Apple announced and Apple Türkiye's launch price (TL), each

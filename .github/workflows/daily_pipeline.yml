@@ -1,9 +1,9 @@
 name: daily-pipeline
 
-# Phase 1 nightly data pipeline (plan 6.1): one full run per source per day, loaded into Neon's raw.offer_snapshots
-# (the payload only when an offer changed), raw.rejected_offers and ops.pipeline_runs. Nothing is uploaded as an
-# artifact and the job summary holds counts and timings only (K12, K19). It replaced the Phase 0 trial-crawl workflow
-# on 20.10.2026.
+# Nightly data pipeline (plan 6.1): one full run per source per day, loaded into Neon's raw.offer_snapshots (the
+# payload only when an offer changed), raw.rejected_offers and ops.pipeline_runs, then the dbt models (Phase 2).
+# Nothing is uploaded as an artifact and the job summary holds counts and timings only (K12, K19). It replaced the
+# Phase 0 trial-crawl workflow on 20.10.2026.
 
 on:
   schedule:
@@ -82,6 +82,7 @@ jobs:
           echo "::notice title=$SOURCE run (exit $code)::$result"
           exit "$code"
       - name: Load into Neon
+        id: load
         # Also after a failed crawl: the summary (and any offers collected before the stop) is still worth keeping.
         if: always() && steps.guard.outputs.skip != 'true'
         env:
@@ -91,6 +92,17 @@ jobs:
           args=(--run-dir "$RUNNER_TEMP/run" --run-id "$RUN_ID" --workflow daily-pipeline)
           if [ -n "$EXIT_CODE" ]; then args+=(--exit-code "$EXIT_CODE"); fi
           uv run python -m price_radar.storage.snapshots load "${args[@]}"
+      - name: Transform (dbt)
+        # staging -> core -> marts and their tests (plan 8.1), on what is loaded, a partial day included: the next run
+        # computes the last 3 days again. A failed model or test fails the run and goes to Telegram; a warning (an
+        # unknown model or condition label) goes to Telegram only.
+        if: always() && steps.guard.outputs.skip != 'true' && steps.load.outcome == 'success'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          uv run python -m price_radar.transform.runner build --summary "$GITHUB_STEP_SUMMARY" --annotate \
+            --notify problems
       - name: Database size
         # No retention yet (it starts with the summary tables of Phase 2); warn at 70% of Neon's free storage.
         if: always() && steps.guard.outputs.skip != 'true'

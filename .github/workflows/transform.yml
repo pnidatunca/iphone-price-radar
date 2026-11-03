@@ -1,0 +1,40 @@
+name: transform
+
+# The dbt models (plan 8.1) on Neon without a crawl: the nightly run builds them after loading, this runs them alone,
+# e.g. after a change to the models or a failed nightly build. A manual run of daily-pipeline would crawl again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      select:
+        description: dbt node selection (empty = the whole project), e.g. "marts" or "fct_offer_daily+"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # One build at a time, the nightly one included.
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SELECT: ${{ inputs.select }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: dbt build
+        run: |
+          args=(build --summary "$GITHUB_STEP_SUMMARY" --annotate --notify problems)
+          if [ -n "$SELECT" ]; then args+=(--select "$SELECT"); fi
+          uv run python -m price_radar.transform.runner "${args[@]}"
