@@ -1,11 +1,12 @@
 # iPhone Price Radar
 
-Daily price intelligence for iPhones sold in Turkey (iPhone X and newer), refurbished and new. The system collects
-offers from refurbished-device retailers and a marketplace every night, estimates the fair price of each device with an
-uncertainty interval, and flags offers priced clearly below the market, in separate deal sections for refurbished and
-new phones.
+Daily price intelligence for refurbished iPhones sold in Turkey (iPhone X and newer). Every night the system collects
+the offers of all sellers on Getmobil, a refurbished-device marketplace, together with the official TCMB exchange rate.
+On this data it will estimate the fair price of each device with an uncertainty interval and flag offers priced
+clearly below the market.
 
-**Status:** Phase 0 (feasibility), October 2026.
+**Status:** Phase 1 (data pipeline) completed on 3.11.2026: nightly collection into PostgreSQL, health checks with
+Telegram alerts, a weekly Parquet archive and the device reference table. Next: Phase 2 (analytics).
 
 ## What it will do
 
