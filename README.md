@@ -104,6 +104,15 @@ The `fx-rates` workflow runs every morning and stores the TCMB bulletins that ar
 (`python -m price_radar.fx.tcmb`, then `python -m price_radar.storage.fx_rates load`). Prices of day D are converted
 with the USD forex selling rate announced on the last business day before D.
 
+The `weekly-archive` workflow runs on Mondays and copies every complete ISO week (Monday to Sunday, Turkey time) of
+`raw.offer_snapshots`, `raw.rejected_offers` and `ops.pipeline_runs` to Parquet files in the private DagsHub
+repository's storage, one file per table, platform and week (`raw/offer_snapshots/platform=getmobil/2026-W44.parquet`),
+with the rows exactly as the table holds them (`python -m price_radar.archive.parquet_export`). Nothing is uploaded
+unless the DagsHub API reports the repository as private. Each file is read back and recorded in `ops.archive_runs`
+(rows, first and last day, SHA-256 of the rows and of the file); detail rows will only be deleted (plan 8.3) once their
+week is recorded there. Weeks not archived yet are caught up, the last two weeks are compared again and rewritten if
+rows were added later, and a manual run can pick one week (`--week 2026-W44`).
+
 Health checks (`python -m price_radar.monitoring.health`) run after every nightly run and again in the afternoon
 (`health-check` workflow), because a run that never started sends no failure e-mail. Errors: no complete run today
 or yesterday, offers below half of the 7-day average, listing pages that flag the crawler as a bot. Warnings: the

@@ -49,6 +49,17 @@ retention:
   rejected_days: 30
   ops_days: 180
 
+archive:
+  # Weekly Parquet archive (plan 8.3) in the S3-compatible storage of a private DagsHub repository. The token
+  # (DAGSHUB_USER_TOKEN, a secret) is both the access key and the secret key.
+  repository: pnidatunca/iphone-price-radar-archive
+  s3_endpoint: "https://dagshub.com/api/v1/repo-buckets/s3/pnidatunca"
+  bucket: iphone-price-radar-archive
+  region: us-east-1
+  # The last complete week and the one before it are read again on every run and rewritten if rows were added after
+  # they were archived (a late run). Must stay below the shortest retention (rejected_days) in weeks.
+  recheck_weeks: 2
+
 model:
   target: log_price_usd
   train_window_days: 90          # total window including the test week

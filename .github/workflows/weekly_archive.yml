@@ -1,0 +1,47 @@
+name: weekly-archive
+
+# Weekly Parquet archive (plan 8.3, K6): raw.offer_snapshots, raw.rejected_offers and ops.pipeline_runs, one file per
+# table, platform and ISO week, in the private DagsHub storage, each recorded in ops.archive_runs after it was read back.
+# Nothing is uploaded as an artifact and the job summary holds counts and paths only (K12, K19).
+
+on:
+  schedule:
+    # Mondays 06:37 Turkey time. GitHub starts scheduled runs hours late at busy times; the job counts weeks in Turkey
+    # time whenever it starts, catches up weeks that a dropped run missed and skips files that are archived unchanged.
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      week:
+        description: One ISO week to read again, e.g. 2026-W44 (empty = the weeks not archived yet and the last two)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      WEEK: ${{ inputs.week }}
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Archive
+        # The command sends the week's counts to Telegram, and any failure with its reason; an error turns the job red.
+        run: |
+          args=(--run-id "$RUN_ID" --summary "$GITHUB_STEP_SUMMARY" --annotate --notify always)
+          if [ -n "$WEEK" ]; then args+=(--week "$WEEK"); fi
+          uv run python -m price_radar.archive.parquet_export "${args[@]}"

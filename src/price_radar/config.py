@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from price_radar.ingest.http_client import CrawlPolicy
 
@@ -48,11 +48,20 @@ class SourceSettings(BaseModel):
     base_url: str
 
 
+class ArchiveSettings(BaseModel):
+    repository: str  # "owner/name" of the private DagsHub repository
+    s3_endpoint: str
+    bucket: str
+    region: str = "us-east-1"
+    recheck_weeks: int = Field(default=2, ge=1)
+
+
 class Settings(BaseModel):
     crawler: CrawlerSettings
     scope: ScopeSettings = ScopeSettings()
     sources: dict[str, SourceSettings]
     retention: dict[str, int] = {}
+    archive: ArchiveSettings | None = None
     model: dict[str, float | int | str] = {}
 
 
