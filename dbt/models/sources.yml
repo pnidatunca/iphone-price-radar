@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw tables written by the nightly pipeline (`price_radar.storage.snapshots`); detail rows are kept 90 days (K6) and archived weekly as Parquet (K28).
+    tables:
+      - name: offer_snapshots
+        description: One row per offer and day. Every column but `payload` is filled on every row; `payload` only on the day the offer changed (its `payload_hash` differs from its previous row).
+        data_tests:
+          - unique_combination:
+              arguments:
+                columns: [snapshot_date, offer_key]
+        columns:
+          - name: offer_key
+            data_tests: [not_null]
+          - name: payload_hash
+            data_tests: [not_null]
+
+  - name: ops
+    description: Run records of the pipeline.
+    tables:
+      - name: pipeline_runs
+        description: One row per collection run, failed runs included (`price_radar.storage.snapshots`).
+
+  - name: ref
+    description: Reference tables maintained outside dbt.
+    tables:
+      - name: fx_rates
+        description: TCMB bulletins, one row per currency and announcement day (`price_radar.storage.fx_rates`, plan 5.4).
+        data_tests:
+          - unique_combination:
+              arguments:
+                columns: [currency, announced_on]
+      - name: devices
+        description: One row per iPhone model and storage size from `dbt/seeds/devices.csv`, loaded by `price_radar.storage.devices` (plan 5.5, K29).
+        data_tests:
+          - unique_combination:
+              arguments:
+                columns: [model, storage_gb]

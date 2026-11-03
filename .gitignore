@@ -16,6 +16,10 @@ data/
 local_samples/
 *.parquet
 
+# dbt build output and logs
+dbt/target/
+dbt/logs/
+
 # Editors and OS
 .vscode/
 .idea/

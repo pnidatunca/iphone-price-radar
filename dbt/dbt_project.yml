@@ -1,0 +1,69 @@
+# The analytics layer (plan 8.1): staging views over the raw tables, the core dimensions and daily offer fact, and the
+# permanent marts. Run it with `python -m price_radar.transform.runner build`, which takes the connection from
+# NEON_DATABASE_URL (see profiles.yml).
+name: price_radar
+version: "0.1.0"
+config-version: 2
+profile: price_radar
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, logs]
+
+flags:
+  send_anonymous_usage_stats: false
+
+vars:
+  # A segment is model + storage + condition (plan 8.2). "raw" groups offers by the platform's own condition label,
+  # "common" by the shared scale of ref.condition_map. Open decision of Phase 2; marts record the basis they were
+  # built with, and a test fails when it changes without a rebuild.
+  segment_condition: raw
+  # Days the incremental models compute again on every run: a fallback or manual run can add offers to recent days,
+  # and the TCMB rate of a day is only certain once the next bulletin is stored.
+  lookback_days: 3
+  # Fixed-basket price index (plan 10.3), first draft. The basket is every segment priced on at least
+  # index_min_day_share of the base days with at least index_min_offers offers a day on average.
+  index_base_start: "2026-10-20"
+  index_base_end: "2026-11-02"
+  index_min_day_share: 0.8
+  index_min_offers: 2
+  # Read-only database role of the Streamlit app: granted select on the marts after every run, once it exists.
+  reader_role: radar_reader
+
+models:
+  price_radar:
+    staging:
+      +schema: staging
+      +materialized: view
+    core:
+      +schema: core
+      +materialized: table
+      +persist_docs: {relation: true, columns: true}
+    marts:
+      +schema: marts
+      # Permanent tables (plan 8.3): the raw detail behind them is deleted after 90 days, so a full refresh could not
+      # rebuild their history. A deliberate rebuild drops the table first (docs/reprocessing.md).
+      +materialized: incremental
+      +full_refresh: false
+      +persist_docs: {relation: true, columns: true}
+
+seeds:
+  price_radar:
+    +schema: ref
+    devices:
+      # ref.devices is loaded by `python -m price_radar.storage.devices load` (Phase 1). Whether dbt takes it over is an
+      # open decision; until then dbt reads it as a source, so the table has a single loader.
+      +enabled: false
+    condition_map:
+      +column_types:
+        platform: text
+        condition_raw: text
+        condition_level: integer
+        condition_common: text
+        note: text
+
+on-run-end:
+  - "{{ grant_reader() }}"

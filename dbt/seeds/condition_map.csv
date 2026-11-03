@@ -1,0 +1,7 @@
+platform,condition_raw,condition_level,condition_common,note
+getmobil,Premium+,4,Mükemmel,"Getmobil's own tier: excellent cosmetics, all components original. Getmobil prices it about 5% above its own Mükemmel offers (W42-W44)"
+getmobil,Mükemmel,4,Mükemmel,
+getmobil,Premium,4,Mükemmel,Getmobil's own tier; Getmobil prices it like its own Mükemmel offers (W42-W44)
+getmobil,Çok İyi,3,Çok İyi,Rare: 5 offer rows in W42-W44
+getmobil,İyi,2,İyi,
+getmobil,Outlet,1,Outlet,Seen in Phase 0; no offers in W42-W44

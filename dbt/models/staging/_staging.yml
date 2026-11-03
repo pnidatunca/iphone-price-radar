@@ -1,0 +1,149 @@
+version: 2
+
+models:
+  - name: stg_offer_snapshots
+    description: >
+      Every offer of every day with its full record. Columns outside the payload come from the day's row; the payload
+      is the one stored on the offer's latest change (`payload_date`), because raw.offer_snapshots stores it only when
+      `payload_hash` changes. Payload fields outside that hash (seller score, delivery days) are as of that change.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, offer_key]
+    columns:
+      - name: snapshot_date
+        description: Turkish calendar day the offer was seen.
+        data_tests: [not_null]
+      - name: offer_key
+        description: "`{platform}:{variant id}:{seller id}`: one seller's offer of one variant."
+        data_tests: [not_null]
+      - name: platform
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [getmobil, trendyol]
+      - name: run_id
+        description: Collection run that saw the offer (ops.pipeline_runs).
+      - name: fetched_at
+        description: When the variant page was read (UTC).
+      - name: variant_id
+        description: The platform's id of the variant (model, storage, colour, condition and SIM); part of the offer key.
+      - name: model
+        description: Canonical model name, spelled as `normalize.canonical_model` writes it.
+      - name: storage_gb
+        description: Storage size in GB (1 TB = 1024).
+      - name: device_id
+        description: Model and storage, e.g. "iPhone 13 128 GB"; the key of core.dim_device.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_devices')
+                field: device_id
+              config:
+                severity: warn  # a new model or size: reported, the marts still build
+      - name: color
+      - name: sim_type
+        description: physical or esim.
+      - name: condition_raw
+        description: The platform's own condition label (Getmobil Mükemmel, Premium+, Premium, Çok İyi, İyi, Outlet).
+      - name: condition_id
+        description: "`{platform}:{condition_raw}`; the key of core.dim_condition."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_condition')
+                field: condition_id
+              config:
+                severity: warn  # a label ref.condition_map lacks
+      - name: seller_id
+        description: The platform's numeric seller id. Seller names, slugs and store links are never stored (K22).
+        data_tests: [not_null]
+      - name: seller_key
+        description: "`{platform}:{seller_id}`; the key of core.dim_seller."
+      - name: seller_is_platform
+        description: The platform itself sells the offer (Getmobil's own stock), from the payload.
+      - name: seller_score
+        description: The seller's rating as the page shows it, from the payload.
+      - name: seller_top
+        description: The page marks the seller as a top seller.
+      - name: seller_trusted
+        description: The page marks the seller as trusted.
+      - name: fast_delivery
+      - name: shipping_days
+      - name: battery_addon_price_tl
+        description: Price of Getmobil's paid "new battery" option on the buybox offer, when shown.
+      - name: is_buybox
+        description: The offer the variant page shows first (Getmobil's buybox).
+      - name: price_tl
+        description: What a buyer pays today for the offer (K24).
+        data_tests: [not_null]
+      - name: list_price_tl
+        description: The price before a temporary discount the page shows for the offer, else `price_tl` (K24). For rows stored before the column existed it is rebuilt from the payload's struck-through price.
+        data_tests:
+          - not_null
+          - expression_is_true:
+              arguments:
+                expression: list_price_tl >= price_tl
+      - name: promo_pct
+        description: Discount between `list_price_tl` and `price_tl`, in percent of `list_price_tl`.
+      - name: list_price_from_payload
+        description: "`list_price_tl` and `promo_pct` were rebuilt from the payload (rows of parser getmobil-1)."
+      - name: stock_qty
+        description: Units the seller has in stock.
+      - name: in_stock
+      - name: product_url
+        description: The variant page.
+      - name: offer_url
+        description: The variant page opened on this seller's offer (`?merchantId=`); the "Teklife git" link (K22).
+      - name: payload_changed
+        description: The raw row stored a payload, i.e. the offer changed that day (or was new).
+      - name: payload_date
+        description: Day of the stored payload this row uses.
+      - name: payload
+        description: The offer's payload as of `payload_date`.
+        data_tests:
+          - not_null  # empty once the row holding an offer's payload is deleted: the retention step must keep it
+      - name: payload_hash
+      - name: parser_version
+
+  - name: stg_fx_rates
+    description: USD/TRY per TCMB bulletin and the snapshot days it serves (plan 5.4).
+    columns:
+      - name: announced_on
+        description: Day TCMB announced the bulletin (15:30).
+        data_tests: [unique, not_null]
+      - name: valid_from
+        description: First snapshot day the rate applies to, the day after the announcement.
+      - name: valid_to
+        description: Last snapshot day the rate applies to, the day before the next bulletin takes over; empty for the latest bulletin.
+      - name: bulletin_no
+      - name: usd_try
+        description: Forex selling rate of one US dollar in lira.
+        data_tests:
+          - not_null
+          - expression_is_true:
+              arguments:
+                expression: usd_try > 0
+
+  - name: stg_devices
+    description: ref.devices with the device key `device_id` (model and storage).
+    columns:
+      - name: device_id
+        data_tests: [unique, not_null]
+      - name: model
+      - name: generation
+        description: The number in the name; the X family is 10, models without a number take the flagship number of their release.
+      - name: series
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [standart, mini, Plus, Pro, Pro Max, e, SE, Air, Duo]
+      - name: release_date
+        description: First day on sale in the US.
+      - name: storage_gb
+      - name: us_launch_price_usd
+        description: US price Apple announced at launch, before sales tax (K29).
+      - name: tr_launch_price_tl
+        description: Apple Türkiye's launch price, where a source states it (K29); never estimated.
+      - name: source_url
+      - name: tr_source_url

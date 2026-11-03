@@ -1,0 +1,17 @@
+# Connection of the dbt project. price_radar.transform.runner sets these variables from NEON_DATABASE_URL; with the
+# DBT_ENV_SECRET_ prefix dbt scrubs their values from everything it logs. No secret is written in this file.
+price_radar:
+  target: default
+  outputs:
+    default:
+      type: postgres
+      host: "{{ env_var('DBT_ENV_SECRET_HOST') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_ENV_SECRET_USER') }}"
+      password: "{{ env_var('DBT_ENV_SECRET_PASSWORD', '') }}"
+      dbname: "{{ env_var('DBT_ENV_SECRET_DBNAME') }}"
+      schema: public  # unused: every model names its own schema (macros/generate_schema_name.sql)
+      sslmode: "{{ env_var('DBT_SSLMODE', 'require') }}"
+      threads: 4
+      connect_timeout: 30
+      retries: 2

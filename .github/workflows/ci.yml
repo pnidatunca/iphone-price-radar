@@ -19,3 +19,30 @@ jobs:
         run: uv run ruff format --check .
       - name: Tests
         run: uv run pytest -q
+
+  dbt:
+    # The dbt project on a throwaway PostgreSQL 18 (Neon's version) with synthetic offers: two incremental builds, the
+    # figures they give, and a full rebuild that must give the same marts (tests/test_dbt_models.py). No secret is used.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      RADAR_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: dbt models
+        run: uv run pytest -q tests/test_dbt_models.py
+      - name: dbt docs
+        # The documentation site must build; it is not published.
+        env:
+          NEON_DATABASE_URL: ${{ env.RADAR_TEST_DATABASE_URL }}
+        run: uv run python -m price_radar.transform.runner docs

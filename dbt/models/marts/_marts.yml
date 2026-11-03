@@ -1,0 +1,210 @@
+version: 2
+
+models:
+  - name: daily_segment_prices
+    description: >
+      Day x platform x segment (model + storage + condition, plan 8.2): offer count and the price distribution in lira
+      and dollars, in-stock offers only. Permanent (`full_refresh` false); the last `lookback_days` days are computed
+      again on every run. The Power BI model and the Streamlit market page read it.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, platform, segment_id]
+    columns:
+      - name: snapshot_date
+        description: Turkish calendar day.
+        data_tests: [not_null]
+      - name: platform
+      - name: segment_id
+        description: Device and condition, e.g. "iPhone 13 128 GB · Mükemmel".
+        data_tests: [not_null]
+      - name: segment_basis
+        description: raw (the platform's condition label) or common (the shared scale); one basis per table.
+      - name: device_id
+        description: Model and storage, the key of core.dim_device.
+      - name: model
+      - name: storage_gb
+      - name: segment_condition
+        description: The condition part of the segment.
+      - name: condition_level
+        description: Level of the condition on the shared scale, 4 (Mükemmel) to 1 (Outlet).
+      - name: generation
+      - name: series
+      - name: release_date
+        description: US release of the model.
+      - name: device_age_days
+        description: Days since the model's US release.
+      - name: us_launch_price_usd
+        description: US launch price of the device (K29).
+      - name: offer_count
+        description: In-stock offers (one per variant and seller).
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: offer_count > 0
+      - name: seller_count
+      - name: platform_offer_count
+        description: Offers sold by the platform itself.
+      - name: stock_units
+        description: Units in stock over the offers.
+      - name: median_price_tl
+        data_tests: [not_null]
+      - name: p25_price_tl
+      - name: p75_price_tl
+      - name: min_price_tl
+      - name: max_price_tl
+      - name: median_price_usd
+        data_tests: [not_null]
+      - name: min_price_usd
+      - name: max_price_usd
+      - name: usd_try
+        description: TCMB rate the dollar prices use (plan 5.4).
+      - name: fx_confirmed
+        description: The rate is final (a later bulletin is stored).
+      - name: computed_at
+        description: When the row was last computed.
+
+  - name: daily_market
+    description: Day x platform overview of the whole market (in-stock offers), for KPI cards. Permanent, with the same lookback as daily_segment_prices.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, platform]
+    columns:
+      - name: snapshot_date
+        data_tests: [not_null]
+      - name: platform
+      - name: offer_count
+      - name: seller_count
+      - name: model_count
+      - name: device_count
+        description: Distinct model and storage pairs.
+      - name: segment_count
+      - name: platform_offer_count
+        description: Offers sold by the platform itself.
+      - name: stock_units
+      - name: median_price_tl
+        description: Median over all offers of the day; it moves with the mix of models on sale, not only with prices.
+      - name: median_price_usd
+      - name: discounted_offer_count
+        description: Offers with a discount shown on the page (`promo_pct` above 0).
+      - name: usd_try
+      - name: fx_confirmed
+      - name: computed_at
+
+  - name: offer_lifecycle
+    description: >
+      One row per offer (variant and seller) over its whole life (plan 8.3): first and last day, first and last
+      price, price changes, days seen. Permanent: each run merges an offer's new days into its row, because the raw
+      detail behind the figures is deleted after 90 days. An offer missing on some days keeps its row; the gap is
+      `last_seen - first_seen + 1 - days_seen` days.
+    columns:
+      - name: offer_key
+        data_tests: [unique, not_null]
+      - name: platform
+      - name: variant_id
+      - name: seller_key
+        description: "`{platform}:{seller id}`; no seller names (K22)."
+      - name: seller_is_platform
+        description: Sold by the platform itself.
+      - name: device_id
+      - name: model
+      - name: storage_gb
+      - name: color
+      - name: sim_type
+      - name: condition_raw
+      - name: segment_id
+        description: Segment on the offer's first day.
+      - name: first_seen
+        data_tests: [not_null]
+      - name: last_seen
+        data_tests: [not_null]
+      - name: days_seen
+        description: Days the offer was seen in stock.
+      - name: first_price_tl
+      - name: last_price_tl
+      - name: min_price_tl
+      - name: max_price_tl
+      - name: price_change_count
+        description: Times the price differed from the offer's previous day seen.
+      - name: price_cut_count
+        description: The changes that lowered the price.
+      - name: updated_at
+        description: When the row was last merged.
+
+  - name: price_index_basket
+    description: >
+      The fixed basket of the price index (plan 10.3, first draft): segments priced on at least `index_min_day_share`
+      of the base period's days with at least `index_min_offers` offers a day on average, weighted by their share of
+      the base period's offers. `final` turns true once the base period's days are no longer computed again.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [platform, segment_id]
+    columns:
+      - name: platform
+      - name: segment_id
+      - name: model
+      - name: storage_gb
+      - name: segment_condition
+      - name: base_start
+        description: First day of the base period (var index_base_start).
+      - name: base_end
+        description: Last day of the base period (var index_base_end).
+      - name: base_days
+        description: Days of the base period with data.
+      - name: final
+        description: The base period's days are out of the lookback window, so the basket no longer changes.
+      - name: days_priced
+        description: Base days the segment had in-stock offers.
+      - name: avg_offers
+        description: Offers a day on those days.
+      - name: base_offers
+        description: Offers over the base period.
+      - name: weight
+        description: Share of the base period's offers within the basket; sums to 1 per platform.
+      - name: base_price_tl
+        description: Median of the segment's daily median prices over the base period.
+      - name: base_price_usd
+
+  - name: price_index
+    description: >
+      Refurbished iPhone price index, fixed basket, first draft (plan 10.3): 100 = the base period's prices, in lira
+      and in dollars. Days are chain linked over the segments priced on both days, so a missing segment neither breaks
+      nor biases the series. Not age adjusted: the basket's devices age, so the index also falls by depreciation (the
+      age-adjusted hedonic index comes with the model in Phase 3).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, platform]
+    columns:
+      - name: snapshot_date
+        data_tests: [not_null]
+      - name: platform
+      - name: index_tl
+        data_tests:
+          - not_null
+          - expression_is_true:
+              arguments:
+                expression: index_tl > 0
+      - name: index_usd
+        data_tests: [not_null]
+      - name: segments_priced
+        description: Basket segments with in-stock offers that day.
+      - name: segments_matched
+        description: Of them, those priced on the previous day too; the day's change is measured on these. Empty on the first day.
+      - name: basket_segments
+      - name: weight_priced
+        description: Basket weight priced that day; a low value (a short run) makes the day less reliable.
+      - name: link_tl
+        description: Change from the previous day over the matched segments (1 = unchanged).
+      - name: link_usd
+      - name: base_start
+      - name: base_end
+      - name: basket_final
+        description: The basket no longer changes (see price_index_basket.final).
+      - name: basket_checksum
+        description: Fingerprint of the basket the day was computed with.
+      - name: fx_confirmed
+        description: The dollar figures use final TCMB rates.
+      - name: computed_at

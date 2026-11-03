@@ -1,0 +1,155 @@
+version: 2
+
+models:
+  - name: dim_device
+    description: One row per iPhone model and storage size (ref.devices, plan 5.5) with the attributes analyses compare devices by.
+    columns:
+      - name: device_id
+        description: Model and storage, e.g. "iPhone 13 128 GB".
+        data_tests: [unique, not_null]
+      - name: model
+        description: Canonical model name.
+      - name: storage_gb
+      - name: generation
+        description: The number in the name; the X family is 10, a model without a number takes the flagship number of its release (SE 2020 11, SE 2022 13, Air 17, Duo 18).
+      - name: series
+        description: standart, mini, Plus, Pro, Pro Max, e, SE, Air or Duo.
+      - name: release_date
+        description: First day on sale in the US.
+      - name: us_launch_price_usd
+        description: US launch price Apple announced for this size, before sales tax (K29).
+      - name: tr_launch_price_tl
+        description: Apple Türkiye's launch price where a source states it; never estimated (K29).
+      - name: model_us_launch_price_usd
+        description: US launch price of the model's smallest size.
+      - name: storage_rank
+        description: 1 for the model's smallest size, 2 for the next, and so on.
+      - name: storage_options
+        description: Number of storage sizes of the model.
+      - name: source_url
+        description: Source of the release date and US price.
+      - name: tr_source_url
+        description: Source of the Turkish price.
+
+  - name: dim_condition
+    description: Platform condition labels with their level on the shared scale (seed ref.condition_map, plan 9).
+    columns:
+      - name: condition_id
+        description: "`{platform}:{condition_raw}`."
+        data_tests: [unique, not_null]
+      - name: platform
+      - name: condition_raw
+        description: The platform's own label.
+      - name: condition_level
+        description: Shared scale, 4 (Mükemmel) to 1 (Outlet).
+      - name: condition_common
+        description: Name of the shared level.
+      - name: note
+
+  - name: dim_seller
+    description: >
+      One row per seller with its platform and numeric id. Names, slugs, store links and legal details are never
+      stored (K22); public charts label sellers anonymously. Dates and counts cover the 90-day detail.
+    columns:
+      - name: seller_key
+        description: "`{platform}:{seller_id}`."
+        data_tests: [unique, not_null]
+      - name: platform
+      - name: seller_id
+        description: The platform's numeric seller id.
+      - name: is_platform
+        description: The platform itself (Getmobil selling its own stock).
+      - name: latest_score
+        description: The seller's rating on its latest day.
+      - name: latest_top
+        description: Marked as a top seller on its latest day.
+      - name: latest_trusted
+        description: Marked as a trusted seller on its latest day.
+      - name: first_seen
+        description: First day with an offer, within the detail window.
+      - name: last_seen
+        description: Latest day with an offer.
+      - name: days_seen
+        description: Days with at least one offer, within the detail window.
+      - name: offers_seen
+        description: Distinct offers (variant and seller) within the detail window.
+
+  - name: fct_offer_daily
+    description: >
+      The cleaned daily offer (plan 8.2): one row per offer and day, with device, condition, seller and segment, and
+      the price in lira and dollars. Incremental: the last `lookback_days` days are computed again on every run.
+      Kept as long as the raw detail (90 days).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, offer_key]
+    columns:
+      - name: snapshot_date
+        description: Turkish calendar day the offer was seen.
+        data_tests: [not_null]
+      - name: offer_key
+        description: "`{platform}:{variant id}:{seller id}`."
+        data_tests: [not_null]
+      - name: platform
+      - name: variant_id
+        description: The platform's id of the variant (model, storage, colour, condition, SIM).
+      - name: device_id
+        description: Key of core.dim_device.
+      - name: model
+      - name: storage_gb
+      - name: generation
+      - name: series
+      - name: release_date
+      - name: device_age_days
+        description: Days between the model's US release and the snapshot day.
+      - name: color
+      - name: sim_type
+      - name: condition_raw
+        description: The platform's own condition label.
+      - name: condition_id
+        description: Key of core.dim_condition.
+      - name: condition_level
+        description: Level on the shared scale (4 Mükemmel to 1 Outlet); empty for a label ref.condition_map lacks.
+      - name: condition_common
+        description: Name of the shared level.
+      - name: segment_basis
+        description: The condition basis of the segment, raw or common (var segment_condition).
+      - name: segment_condition
+        description: The condition part of the segment.
+      - name: segment_id
+        description: Device and condition, e.g. "iPhone 13 128 GB · Mükemmel" (plan 8.2).
+        data_tests: [not_null]
+      - name: seller_key
+        description: Key of core.dim_seller.
+      - name: seller_id
+      - name: seller_is_platform
+        description: Sold by the platform itself.
+      - name: is_buybox
+        description: The offer the variant page shows first.
+      - name: price_tl
+        description: What a buyer pays today (K24).
+      - name: list_price_tl
+        description: Price before a temporary discount shown on the page, else `price_tl` (K24).
+      - name: promo_pct
+        description: Discount between the two, in percent of `list_price_tl`.
+      - name: usd_try
+        description: USD forex selling rate of the last TCMB bulletin announced before the snapshot day (plan 5.4).
+        data_tests: [not_null]
+      - name: fx_announced_on
+        description: Announcement day of that bulletin.
+      - name: fx_confirmed
+        description: A later bulletin is stored, so no bulletin between can be missing and the rate is final. False for the latest days until the next bulletin arrives.
+      - name: price_usd
+        description: "`price_tl / usd_try`."
+        data_tests: [not_null]
+      - name: list_price_usd
+      - name: us_launch_price_usd
+        description: US launch price of the device (K29).
+      - name: price_to_us_launch
+        description: Dollar price divided by the US launch price. Above 1 is possible, because Turkish prices include taxes the US price does not (plan 5.5); a measure for comparing models, not a loss of value.
+      - name: stock_qty
+      - name: in_stock
+      - name: offer_url
+        description: The "Teklife git" link to this seller's offer (K22).
+      - name: run_id
+      - name: fetched_at

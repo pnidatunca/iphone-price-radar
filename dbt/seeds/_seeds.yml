@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: condition_map
+    description: >
+      Platform condition labels on a shared ordinal scale (plan 9; draft, open decision of Phase 2): 4 Mükemmel,
+      3 Çok İyi, 2 İyi, 1 Outlet. The raw label stays a column of its own everywhere; the scale is only for comparing
+      platforms and for a coarser segment (var segment_condition = common).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [platform, condition_raw]
+    columns:
+      - name: platform
+      - name: condition_raw
+        description: The label as the platform writes it.
+      - name: condition_level
+        description: Shared scale, 4 (best) to 1.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: condition_common
+        description: Name of the shared level.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Mükemmel, Çok İyi, İyi, Outlet]
+      - name: note
+        description: Why the label sits on its level.
