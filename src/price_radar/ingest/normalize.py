@@ -21,6 +21,7 @@ from typing import Any
 from price_radar.ingest.schemas import STORAGE_VALUES_GB
 
 SUFFIXES = {"pro max": "Pro Max", "pro": "Pro", "plus": "Plus", "mini": "mini"}
+NAMED = {"air": "iPhone Air", "duo": "iPhone Duo"}  # models without a number; iPhone Duo is the 2026 foldable
 SE_GENERATIONS = {
     "2016": 2016,
     "1st generation": 2016,
@@ -126,8 +127,8 @@ def canonical_model(raw: str | None) -> str | None:
     if marker is None:
         return None
     rest = text[marker.end() :]
-    if rest == "air":
-        return "iPhone Air"
+    if rest in NAMED:
+        return NAMED[rest]
     if rest == "se" or rest.startswith("se "):
         year = SE_GENERATIONS.get(rest[3:])
         return f"iPhone SE ({year})" if year else None

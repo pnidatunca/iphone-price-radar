@@ -192,6 +192,8 @@ def test_a_new_sticker_price_changes_the_hash():
         ("iPhone XS", "iPhone XS"),
         ("iphone-xs-max", "iPhone XS Max"),
         ("iPhone Air", "iPhone Air"),
+        ("iphone-duo", "iPhone Duo"),
+        ("iPhone 18 Pro Max", "iPhone 18 Pro Max"),
         ("iPhone 6s Plus", "iPhone 6s Plus"),
         ("iPhone 8", "iPhone 8"),
         ("iPhone 17 Pro", "iPhone 17 Pro"),

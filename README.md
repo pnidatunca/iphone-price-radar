@@ -113,6 +113,13 @@ unless the DagsHub API reports the repository as private. Each file is read back
 week is recorded there. Weeks not archived yet are caught up, the last two weeks are compared again and rewritten if
 rows were added later, and a manual run can pick one week (`--week 2026-W44`).
 
+`dbt/seeds/devices.csv` is the device reference: one row per model and storage size from the iPhone X on, with
+generation, series, US release date, the US launch price Apple announced and Apple Türkiye's launch price (TL), each
+with its source. Model names are spelled as the normaliser writes them. Until dbt takes it over as a seed, the
+`ref-devices` workflow loads it into `ref.devices` (`python -m price_radar.storage.devices load`) whenever the file
+changes and every Monday checks that each model and storage size in `raw.offer_snapshots` has a row (`check`): an
+unknown model fails the job and goes to Telegram, an unknown size is a warning.
+
 Health checks (`python -m price_radar.monitoring.health`) run after every nightly run and again in the afternoon
 (`health-check` workflow), because a run that never started sends no failure e-mail. Errors: no complete run today
 or yesterday, offers below half of the 7-day average, listing pages that flag the crawler as a bot. Warnings: the
