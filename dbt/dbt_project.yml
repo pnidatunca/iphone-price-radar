@@ -21,6 +21,8 @@ vars:
   # "common" by the shared scale of ref.condition_map. Open decision of Phase 2; marts record the basis they were
   # built with, and a test fails when it changes without a rebuild.
   segment_condition: raw
+  # The condition other conditions are compared with (marts.daily_condition_premiums).
+  reference_condition: Mükemmel
   # Days the incremental models compute again on every run: a fallback or manual run can add offers to recent days,
   # and the TCMB rate of a day is only certain once the next bulletin is stored.
   lookback_days: 3

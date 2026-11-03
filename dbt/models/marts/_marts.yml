@@ -92,6 +92,41 @@ models:
       - name: fx_confirmed
       - name: computed_at
 
+  - name: daily_condition_premiums
+    description: >
+      Day x platform x condition (A2): the price a seller asks for a condition against its own offer of the
+      reference condition (Mükemmel) for the same model and storage on the same day, so the seller mix stays out of
+      the comparison. Seller groups: all, platform (the platform's own offers), others. Permanent, with the usual
+      lookback.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, platform, condition_raw, seller_group]
+    columns:
+      - name: snapshot_date
+        data_tests: [not_null]
+      - name: platform
+      - name: condition_raw
+        description: The condition compared, the platform's own label.
+      - name: seller_group
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [all, platform, others]
+      - name: reference_condition
+        description: The condition it is compared with (var reference_condition).
+      - name: pairs
+        description: Seller x device pairs with both conditions in stock that day.
+      - name: sellers
+      - name: devices
+        description: Model and storage pairs compared.
+      - name: median_difference_pct
+        description: Median of the sellers' price of the condition over their price of the reference condition, minus 1, in percent.
+        data_tests: [not_null]
+      - name: p25_difference_pct
+      - name: p75_difference_pct
+      - name: computed_at
+
   - name: offer_lifecycle
     description: >
       One row per offer (variant and seller) over its whole life (plan 8.3): first and last day, first and last

@@ -32,6 +32,7 @@ READER = "radar_reader"
 MARTS = {
     "daily_segment_prices": ("snapshot_date", "segment_id"),
     "daily_market": ("snapshot_date",),
+    "daily_condition_premiums": ("snapshot_date", "condition_raw", "seller_group"),
     "offer_lifecycle": ("offer_key",),
     "price_index": ("snapshot_date",),
 }
@@ -75,7 +76,7 @@ def offer(day, key, price, *, model="iPhone 13", storage=128, condition="Mükemm
     }
 
 
-A, B, C, D, F = "getmobil:100:1", "getmobil:100:2", "getmobil:200:2", "getmobil:300:3", "getmobil:300:4"
+A, B, C, D, F, G = (f"getmobil:{key}" for key in ("100:1", "100:2", "200:2", "300:3", "300:4", "300:1"))
 FIRST_BATCH = [
     # A: Getmobil itself, one price, its payload stored once; no list price on the first two days
     offer(D1, A, "30000", data=payload(1, is_getmobil=True, score=9.1, strikethrough_price=33000), listed=False),
@@ -101,6 +102,9 @@ SECOND_BATCH = [
     *(offer(day, C, "35000", storage=256) for day in (D5, D6)),
     *(offer(day, D, "26000", condition="İyi") for day in (D5, D6)),
     *(offer(day, F, "25000", condition="İyi") for day in (D5, D6)),
+    # Getmobil itself also sells the İyi variant from D5: 27000 against its own 30000 Mükemmel offer
+    offer(D5, G, "27000", condition="İyi", data=payload(1, is_getmobil=True)),
+    offer(D6, G, "27000", condition="İyi"),
     # a model ref.devices lacks: a warning, not a failure
     offer(D6, "getmobil:900:5", "99999", model="iPhone 99", data=payload(5, is_getmobil=False)),
 ]
@@ -254,6 +258,17 @@ def test_segment_prices_include_what_a_later_run_added(db):
     assert row == (2, Decimal("25500.00"), 2)
     market = conn.execute("select offer_count from marts.daily_market where snapshot_date = %s", (D4,)).fetchone()
     assert market == (4,)
+
+
+def test_conditions_are_compared_within_a_seller(db):
+    conn, *_ = db
+    rows = conn.execute(
+        "select snapshot_date, seller_group, pairs, median_difference_pct from marts.daily_condition_premiums"
+        " where condition_raw = 'İyi' order by 1, 2"
+    ).fetchall()
+    # only Getmobil (seller 1) sells both conditions of the iPhone 13 128 GB, from D5 on; other sellers' İyi
+    # offers have no Mükemmel offer of their own to compare with
+    assert rows == [(day, group, 1, Decimal("-10.00")) for day in (D5, D6) for group in ("all", "platform")]
 
 
 def test_the_index_is_the_fixed_basket_formula_when_every_segment_is_priced(db):
