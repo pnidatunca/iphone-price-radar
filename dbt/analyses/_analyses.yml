@@ -1,7 +1,7 @@
 version: 2
 
 # The analyses of plan 10.1 (A1-A3, A6) and the headline figures of a market report. dbt compiles them and never
-# runs them; python -m price_radar.analysis.pilot runs them read-only and writes their tables (docs/analyses.md).
+# runs them; python -m price_radar.analysis.run runs them read-only and writes their tables (docs/analyses.md).
 # Each reads the marts only, so it can be run again after the raw detail is deleted.
 
 analyses:
@@ -46,7 +46,8 @@ analyses:
   - name: a3_seller_map
     description: >
       A3, the anonymous seller map: one row per seller with enough compared segments, ranked by offers instead of
-      named (K22).
+      named (K22), with the band of a3_seller_positions its position falls in (below, within or above 5% of the
+      median).
 
   - name: a6_supply_weekly
     description: >

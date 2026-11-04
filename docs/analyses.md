@@ -10,13 +10,32 @@ transaction and writes one CSV per analysis and all of them in `analyses.md`.
 
 On Neon: run the **analysis** workflow by hand (Actions → analysis → Run workflow). `end` is the last day of the
 period (empty: the latest day built) and `days` the cross-sectional window (default 7). The tables appear in the job
-summary and as the `analyses` artifact (CSV files, kept 14 days).
+summary and as the `analyses` artifact (CSV files and the charts, kept 14 days).
 
 Locally, against any database the dbt project was built on:
 
 ```bash
 uv run python -m price_radar.analysis.run --end 2026-11-14 --out reports/data/2026-11
 ```
+
+## Charts
+
+`python -m price_radar.analysis.charts DIR` draws the report charts from the CSV files in DIR into `DIR/charts`
+(`--out` for another place). It needs no database, so it also runs on a downloaded artifact; install its group
+first (`uv sync --group report`). Each chart is written twice, `NAME-light.svg` and `NAME-dark.svg`, and a report
+shows the pair in a `<picture>` element so that GitHub picks the one matching the reader's theme. The same tables
+give the same files.
+
+| Chart | From | Shows |
+|---|---|---|
+| `depreciation` | `a1_age_curve`, `a1_fit` | Each generation's price over its US launch price against its age, log scale, with the fitted line |
+| `conditions` | `a2_conditions` | Each condition against the reference, within the same seller and on segment medians; only conditions with at least 10 comparisons within a seller (`--min-pairs`) |
+| `sellers` | `a3_seller_map` | How many sellers price how far from the segment median, coloured by the bands of `a3_seller_positions`, and the platform's own store as a line |
+| `supply` | `a6_supply_by_generation` | The change in offers a day by generation, from the first window to the last |
+
+The colours come from a palette checked for colour vision deficiencies on both surfaces, and text is never drawn
+in a series colour. Every figure a chart shows is also in the tables, so a report gives a chart's numbers in a table
+or in its text.
 
 The output holds aggregates only. A column that identifies a seller or an offer (`seller_key`, `offer_key`, URLs) is
 refused before anything is written, and the seller map ranks sellers by size instead of naming them (K22).
@@ -38,7 +57,7 @@ two windows, the two overlap. The vars are in `dbt/dbt_project.yml` (`analysis_*
 | `a2_conditions` | What a condition costs against Mükemmel, on segment medians (same device and day) and within the same seller (`daily_condition_premiums`), for all sellers, the platform's own store and the others | Where the two disagree, the platform's share of the condition explains it: segment medians compare sellers as much as conditions. The within-seller figure is the one to quote |
 | `a3_spread` | By the number of sellers in a segment: the interquartile range and the full range of the day's offers over their median, how far below the median the cheapest offer is, and the saving in lira | Offer level: a seller's colours count apart. Segments with one seller are counted, not measured |
 | `a3_seller_positions` | From `daily_seller_positions`: where the platform's own store and the other sellers price against the segment's median seller, how often they are below it or the cheapest, and how many sellers sit more than 5% below or above it | Only segments with at least 3 sellers are compared |
-| `a3_seller_map` | One row per seller with at least 10 compared segment-days: size (offers a day) and mean position, ranked by size | Ranks change from one window to the next; they name no one |
+| `a3_seller_map` | One row per seller with at least 10 compared segment-days: size (offers a day), mean position and its band (`below`, `within` or `above`, as in `a3_seller_positions`), ranked by size | Ranks change from one window to the next; they name no one |
 | `a6_supply_weekly` | By week: offers and sellers a day, the platform's share, new offers a day (first seen) and ended offers a day (last seen the day before) | Offers often leave stock for a day and return. New offers are counted from 3 days after the first day (one out of stock on the first day looks new when it returns), ended offers only when gone for 3 days by the end (one gone on the last days may return); `new_days` and `ended_days` say how many days each figure covers. An ended offer is not necessarily a sale (plan 10.1, A8). Stock units are left out: a few sellers' declared stock drives them (on 16.10 one seller's stock fell from 1,625 units to 17) |
 | `a6_supply_by_generation`, `a6_supply_by_model` | Offers a day over the first and the last days of the period, the change and the share at the end | A few weeks of data: a change is a movement, not yet a trend |
 

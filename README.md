@@ -142,7 +142,8 @@ upload CI checks the generated files for anything that names the production data
 The analyses (plan 10.1: depreciation by age, condition differences, the spread between sellers, supply) and the
 headline figures of the market reports are SQL files in `dbt/analyses/` over the marts. The manual `analysis`
 workflow runs them read-only on Neon (`python -m price_radar.analysis.run`) and puts their tables in the job summary
-and a 14-day artifact: aggregates only, sellers ranked rather than named. [docs/analyses.md](docs/analyses.md)
+and a 14-day artifact: aggregates only, sellers ranked rather than named. The report charts are drawn from those
+tables (`python -m price_radar.analysis.charts`, in the same artifact). [docs/analyses.md](docs/analyses.md)
 describes each method and what to read with care.
 
 The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,

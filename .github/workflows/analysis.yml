@@ -2,8 +2,9 @@ name: analysis
 
 # The analyses of dbt/analyses (plan 10.1: A1-A3, A6) and the headline figures of a market report, run read-only on
 # Neon's marts (python -m price_radar.analysis.run, docs/analyses.md). The tables go to the job summary and, as CSV
-# files, to a short-lived artifact. They hold aggregates only: the module refuses a column that identifies a seller or
-# an offer, and the seller map ranks sellers instead of naming them (K22).
+# files, to a short-lived artifact, with the report charts drawn from them (charts/, light and dark SVG). They hold
+# aggregates only: the module refuses a column that identifies a seller or an offer, and the seller map ranks sellers
+# instead of naming them (K22).
 
 on:
   workflow_dispatch:
@@ -37,13 +38,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --group report  # report: matplotlib, for the charts
       - name: Analyses
         run: |
           args=(--out "$RUNNER_TEMP/analyses" --summary "$GITHUB_STEP_SUMMARY")
           if [ -n "$END" ]; then args+=(--end "$END"); fi
           if [ -n "$DAYS" ]; then args+=(--days "$DAYS"); fi
           uv run python -m price_radar.analysis.run "${args[@]}"
+      - name: Charts
+        run: uv run python -m price_radar.analysis.charts "$RUNNER_TEMP/analyses"
       - name: Upload the tables
         uses: actions/upload-artifact@v7
         with:

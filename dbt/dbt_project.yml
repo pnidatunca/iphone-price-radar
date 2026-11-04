@@ -39,7 +39,7 @@ vars:
   index_min_offers: 2
   # Read-only database role of the Streamlit app: granted select on the marts after every run, once it exists.
   reader_role: radar_reader
-  # Analyses (dbt/analyses, run by python -m price_radar.analysis.pilot): the period ends on analysis_end (empty: the
+  # Analyses (dbt/analyses, run by python -m price_radar.analysis.run): the period ends on analysis_end (empty: the
   # latest day built) and its cross-sectional window is the last analysis_days days. A segment enters the depreciation
   # figures with at least analysis_min_offers offers over the window, a seller the seller map with at least
   # analysis_min_compared compared segment-days. Offers often leave stock for a day or two and return, so new and ended

@@ -23,6 +23,9 @@ dev = [
     "pytest>=8.2",
     "ruff>=0.6",
 ]
+report = [
+    "matplotlib>=3.9",
+]
 
 [build-system]
 requires = ["hatchling"]

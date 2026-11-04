@@ -18,6 +18,7 @@ import psycopg
 import pytest
 from psycopg.types.json import Jsonb
 
+from price_radar.analysis import charts
 from price_radar.analysis import run as analysis
 from price_radar.storage import fx_rates, snapshots
 from price_radar.transform import runner
@@ -291,14 +292,17 @@ def test_sellers_are_placed_against_the_segment_median(db):
     assert rows[D4, "getmobil:4"] == (1, 0, None, 0, 0, 0)  # two İyi sellers on D4
 
 
-def test_the_analyses_run_on_the_marts(db):
+def test_the_analyses_run_on_the_marts(db, tmp_path):
     values = VARS | {"analysis_days": 2, "analysis_min_offers": 1, "analysis_min_compared": 1}
     compiled = analysis.compile_analyses(runner.connection_variables(TEST_URL), values)
     assert [a.name for a in compiled] == analysis.ORDER
-    tables = {
-        t.name: [dict(zip(t.columns, row, strict=True)) for row in t.rows]
-        for t in analysis.run_analyses(TEST_URL, compiled)
-    }
+    results = analysis.run_analyses(TEST_URL, compiled)
+    tables = {t.name: [dict(zip(t.columns, row, strict=True)) for row in t.rows] for t in results}
+
+    # The report charts read the tables as they are written: every chart is drawn from the real columns.
+    analysis.write(results, tmp_path, analysis.markdown(results))
+    written, skipped = charts.draw(tmp_path, tmp_path / "charts", charts.Settings(min_pairs=1))
+    assert (len(written), skipped) == (2 * len(charts.CHARTS), [])
 
     (overview,) = tables["overview"]
     assert (overview["start_day"], overview["end_day"], overview["days"], overview["window_start"]) == (D1, D6, 6, D5)
@@ -323,6 +327,7 @@ def test_the_analyses_run_on_the_marts(db):
     )
     assert (others["cheapest_pct"], others["mapped_sellers"], others["within_5_pct"]) == (50, 2, 2)
     assert len(tables["a3_seller_map"]) == 3
+    assert {row["position_band"] for row in tables["a3_seller_map"]} == {"within"}  # all within 5% of the median
 
     # Flows 3 days away from the ends only: new offers from D4 (F, G and the unknown model, one a day), ended offers on
     # D2 to D4 (none: B was missing on D4 but returned)
