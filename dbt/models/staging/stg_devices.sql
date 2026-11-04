@@ -11,4 +11,4 @@ select
     tr_launch_price_tl,
     source_url,
     tr_source_url
-from {{ source('ref', 'devices') }}
+from {{ ref('devices') }}

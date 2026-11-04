@@ -1,7 +1,7 @@
 name: ref-devices
 
-# The device reference table ref.devices (plan 5.5) from dbt/seeds/devices.csv, until dbt seed takes it over in
-# Phase 2, and a check that every model and storage size seen in raw.offer_snapshots has a row in it.
+# The device reference table ref.devices (plan 5.5): dbt loads dbt/seeds/devices.csv as a seed (also in every nightly
+# build), and a check reports every model and storage size seen in raw.offer_snapshots without a row in it.
 
 on:
   push:
@@ -31,8 +31,10 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
       - name: Install dependencies
         run: uv sync --locked
-      - name: Load ref.devices
-        run: uv run python -m price_radar.storage.devices load
+      - name: Load ref.devices (dbt seed)
+        run: |
+          uv run python -m price_radar.transform.runner build --select devices --summary "$GITHUB_STEP_SUMMARY" \
+            --annotate --notify problems
       - name: Check the models seen
         # An unknown model turns the job red; unknown models and sizes go to Telegram.
         run: |

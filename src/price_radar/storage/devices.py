@@ -1,6 +1,6 @@
-"""The device reference table ref.devices (plan 5.5), loaded from the seed file dbt/seeds/devices.csv.
+"""The device reference ref.devices (plan 5.5): the rules of its seed file dbt/seeds/devices.csv and a check of the
+models the offers carry.
 
-    python -m price_radar.storage.devices load [--file dbt/seeds/devices.csv]
     python -m price_radar.storage.devices check [--summary FILE] [--annotate] [--notify always|problems|never]
 
 One row per model and storage size, iPhone X and newer with SE 2020 and SE 2022 (decision K21): generation, series,
@@ -8,10 +8,10 @@ US release date, Apple's US launch price (USD, before sales tax) and, where a so
 price (TL, with ÖTV and KDV). A Turkish price no source states stays empty; it is never estimated. Model names are
 spelled as ``normalize.canonical_model`` writes them, so they join raw.offer_snapshots as they are.
 
-Until dbt takes the file over as a seed (Phase 2), ``load`` writes the table: it replaces the contents with the file's
-in one transaction, as ``dbt seed`` does. ``check`` lists what raw.offer_snapshots holds without a row: an unknown
-model is an error (a new model, or a name the normaliser spells differently), an unknown storage size of a known model
-a warning (a size the seed lacks, or a site's mistake).
+dbt loads the file as a seed (``dbt build``, decision of 4.11.2026), so the table has that one loader. ``read_seed``
+validates the file row by row in the tests, before a change reaches the database. ``check`` lists what
+raw.offer_snapshots holds without a row: an unknown model is an error (a new model, or a name the normaliser spells
+differently), an unknown storage size of a known model a warning (a size the seed lacks, or a site's mistake).
 
 Column rules:
 
@@ -60,21 +60,6 @@ COLUMNS = (
     "source_url",
     "tr_source_url",
 )
-DDL = """
-create schema if not exists ref;
-create table if not exists ref.devices (
-    model               text not null,
-    generation          integer not null,
-    series              text not null,
-    release_date        date not null,
-    storage_gb          integer not null,
-    us_launch_price_usd numeric not null,
-    tr_launch_price_tl  numeric,
-    source_url          text not null,
-    tr_source_url       text,
-    primary key (model, storage_gb)
-);
-"""
 SEEN_PAIRS = """
 select model, storage_gb, count(*), max(snapshot_date)
 from raw.offer_snapshots
@@ -146,20 +131,6 @@ def read_seed(path: Path = SEED) -> list[Device]:
     return devices
 
 
-def load(conn: psycopg.Connection, devices: list[Device]) -> int:
-    """Replace the table's contents with ``devices`` in one transaction. Returns the rows written."""
-    placeholders = ", ".join(["%s"] * len(COLUMNS))
-    with conn.transaction():
-        conn.execute(DDL)
-        conn.execute("delete from ref.devices")
-        with conn.cursor() as cur:
-            cur.executemany(
-                f"insert into ref.devices ({', '.join(COLUMNS)}) values ({placeholders})",
-                [tuple(getattr(device, column) for column in COLUMNS) for device in devices],
-            )
-    return len(devices)
-
-
 @dataclass(frozen=True)
 class Unmatched:
     model: str
@@ -222,8 +193,6 @@ def check(conn: psycopg.Connection) -> Report:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m price_radar.storage.devices")
     commands = parser.add_subparsers(dest="command", required=True)
-    load_cmd = commands.add_parser("load", help="replace ref.devices with the seed file")
-    load_cmd.add_argument("--file", type=Path, default=SEED)
     check_cmd = commands.add_parser("check", help="list models and sizes of raw.offer_snapshots without a row")
     check_cmd.add_argument("--summary", type=Path, help="append the report to this file (the job summary)")
     check_cmd.add_argument("--annotate", action="store_true", help="print GitHub Actions annotations")
@@ -241,11 +210,6 @@ def main(argv: list[str] | None = None) -> int:
         print("NEON_DATABASE_URL is not set (environment or .env)", file=sys.stderr)
         return 2
     with psycopg.connect(url, connect_timeout=30) as conn:
-        if args.command == "load":
-            devices = read_seed(args.file)
-            count = load(conn, devices)
-            log.info("ref.devices: %s rows for %s models", count, len({d.model for d in devices}))
-            return 0
         report = check(conn)
     lines = report_lines(report)
     print("\n".join(lines))

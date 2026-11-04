@@ -1,11 +1,38 @@
 version: 2
 
 seeds:
+  - name: devices
+    description: >
+      The device reference (plan 5.5, K29): one row per iPhone model and storage size from the iPhone X on, with
+      generation, series, US release date, Apple's US launch price and Apple Türkiye's launch price, each with its
+      source. Model names are spelled as the normaliser writes them. tests/test_devices.py validates every row.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [model, storage_gb]
+    columns:
+      - name: model
+        data_tests: [not_null]
+      - name: generation
+      - name: series
+      - name: release_date
+        description: First day on sale in the US.
+        data_tests: [not_null]
+      - name: storage_gb
+        data_tests: [not_null]
+      - name: us_launch_price_usd
+        description: US launch price Apple announced, before sales tax.
+        data_tests: [not_null]
+      - name: tr_launch_price_tl
+        description: Apple Türkiye's launch price where a source states it; never estimated.
+      - name: source_url
+      - name: tr_source_url
+
   - name: condition_map
     description: >
-      Platform condition labels on a shared ordinal scale (plan 9; draft, open decision of Phase 2): 4 Mükemmel,
-      3 Çok İyi, 2 İyi, 1 Outlet. The raw label stays a column of its own everywhere; the scale is only for comparing
-      platforms and for a coarser segment (var segment_condition = common).
+      Platform condition labels on a shared ordinal scale (plan 9, decided on 4.11.2026): 4 Mükemmel, 3 Çok İyi,
+      2 İyi, 1 Outlet. The raw label stays a column of its own everywhere and is the segment's condition; the scale is
+      for comparing platforms and for a coarser segment (var segment_condition = common).
     data_tests:
       - unique_combination:
           arguments:

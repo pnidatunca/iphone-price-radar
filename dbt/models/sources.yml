@@ -23,7 +23,7 @@ sources:
         description: One row per collection run, failed runs included (`price_radar.storage.snapshots`).
 
   - name: ref
-    description: Reference tables maintained outside dbt.
+    description: Reference tables maintained outside dbt (the seeds ref.devices and ref.condition_map are dbt's own).
     tables:
       - name: fx_rates
         description: TCMB bulletins, one row per currency and announcement day (`price_radar.storage.fx_rates`, plan 5.4).
@@ -31,9 +31,3 @@ sources:
           - unique_combination:
               arguments:
                 columns: [currency, announced_on]
-      - name: devices
-        description: One row per iPhone model and storage size from `dbt/seeds/devices.csv`, loaded by `price_radar.storage.devices` (plan 5.5, K29).
-        data_tests:
-          - unique_combination:
-              arguments:
-                columns: [model, storage_gb]

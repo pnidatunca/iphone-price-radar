@@ -18,7 +18,7 @@ import psycopg
 import pytest
 from psycopg.types.json import Jsonb
 
-from price_radar.storage import devices, fx_rates, snapshots
+from price_radar.storage import fx_rates, snapshots
 from price_radar.transform import runner
 
 TEST_URL = os.environ.get("RADAR_TEST_DATABASE_URL")
@@ -162,7 +162,6 @@ def db():
             conn.execute(f"drop schema if exists {schema} cascade")
         conn.execute(snapshots.DDL)
         conn.execute(fx_rates.DDL)
-        devices.load(conn, devices.read_seed())
         insert(
             conn,
             "ref.fx_rates",

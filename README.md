@@ -141,10 +141,11 @@ the deployment on Streamlit Community Cloud. Run it locally with
 
 `dbt/seeds/devices.csv` is the device reference: one row per model and storage size from the iPhone X on, with
 generation, series, US release date, the US launch price Apple announced and Apple Türkiye's launch price (TL), each
-with its source. Model names are spelled as the normaliser writes them. Until dbt takes it over as a seed, the
-`ref-devices` workflow loads it into `ref.devices` (`python -m price_radar.storage.devices load`) whenever the file
-changes and every Monday checks that each model and storage size in `raw.offer_snapshots` has a row (`check`): an
-unknown model fails the job and goes to Telegram, an unknown size is a warning.
+with its source. Model names are spelled as the normaliser writes them. dbt loads it into `ref.devices` as a seed, in
+every build; `tests/test_devices.py` validates each row first. The `ref-devices` workflow loads it as soon as the file
+changes and every Monday checks that each model and storage size in `raw.offer_snapshots` has a row
+(`python -m price_radar.storage.devices check`): an unknown model fails the job and goes to Telegram, an unknown size
+is a warning.
 
 Health checks (`python -m price_radar.monitoring.health`) run after every nightly run and again in the afternoon
 (`health-check` workflow), because a run that never started sends no failure e-mail. Errors: no complete run today

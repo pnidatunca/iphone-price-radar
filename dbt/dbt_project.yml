@@ -18,16 +18,17 @@ flags:
 
 vars:
   # A segment is model + storage + condition (plan 8.2). "raw" groups offers by the platform's own condition label,
-  # "common" by the shared scale of ref.condition_map. Open decision of Phase 2; marts record the basis they were
-  # built with, and a test fails when it changes without a rebuild.
+  # "common" by the shared scale of ref.condition_map; raw was decided on 4.11.2026 (on one platform it keeps
+  # Premium+, priced ~4% above Mükemmel, apart). Marts record the basis they were built with, and a test fails when it
+  # changes without a rebuild.
   segment_condition: raw
   # The condition other conditions are compared with (marts.daily_condition_premiums).
   reference_condition: Mükemmel
   # Days the incremental models compute again on every run: a fallback or manual run can add offers to recent days,
   # and the TCMB rate of a day is only certain once the next bulletin is stored.
   lookback_days: 3
-  # Fixed-basket price index (plan 10.3), first draft. The basket is every segment priced on at least
-  # index_min_day_share of the base days with at least index_min_offers offers a day on average.
+  # Fixed-basket price index (plan 10.3), first draft; base period decided on 4.11.2026. The basket is every segment
+  # priced on at least index_min_day_share of the base days with at least index_min_offers offers a day on average.
   index_base_start: "2026-10-20"
   index_base_end: "2026-11-02"
   index_min_day_share: 0.8
@@ -56,9 +57,18 @@ seeds:
   price_radar:
     +schema: ref
     devices:
-      # ref.devices is loaded by `python -m price_radar.storage.devices load` (Phase 1). Whether dbt takes it over is an
-      # open decision; until then dbt reads it as a source, so the table has a single loader.
-      +enabled: false
+      # The device reference (plan 5.5): dbt is its only loader since 4.11.2026; tests/test_devices.py validates the
+      # file row by row before a change reaches the database.
+      +column_types:
+        model: text
+        generation: integer
+        series: text
+        release_date: date
+        storage_gb: integer
+        us_launch_price_usd: numeric
+        tr_launch_price_tl: numeric
+        source_url: text
+        tr_source_url: text
     condition_map:
       +column_types:
         platform: text
