@@ -136,7 +136,8 @@ offers and requires a full rebuild to give the same marts.
 The dbt documentation (every model and column, the tests and the lineage graph) is published from that throwaway
 server to GitHub Pages: <https://pnidatunca.github.io/iphone-price-radar/>. It holds no data rows, and before each
 upload CI checks the generated files for anything that names the production database
-(`python -m price_radar.transform.runner check-docs`).
+(`python -m price_radar.transform.runner check-docs`). Power BI imports the same marts through a read-only role;
+[docs/power_bi.md](docs/power_bi.md) describes the model and drafts the DAX measures.
 
 The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,
 the price index, depreciation by model age and the price of each condition. It reads the marts only, through a

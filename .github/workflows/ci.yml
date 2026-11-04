@@ -67,7 +67,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          source=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>/dev/null || echo none)
+          # 404 until Pages is enabled; gh then prints the error body, which is dropped
+          if ! source=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>/dev/null); then source=none; fi
           echo "publish=$([ "$source" = workflow ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "::notice title=dbt docs::GitHub Pages source: $source"
       - name: Upload the site
