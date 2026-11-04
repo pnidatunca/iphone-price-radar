@@ -9,6 +9,7 @@ from price_radar.transform.runner import (
     TransformError,
     annotations,
     connection_variables,
+    docs_problems,
     markdown,
     node_results,
     report_lines,
@@ -139,3 +140,46 @@ def test_an_unexpected_failure_is_scrubbed_and_alerts(monkeypatch, capsys):
     assert runner.main(["build"]) == 1
     assert "error: RuntimeError: could not connect to ***" in capsys.readouterr().out
     assert messages and "ep-example-123" not in messages[0]
+
+
+# A fragment of a documentation site built from CI's throwaway server: database and owner are "postgres", and the
+# bundled JavaScript names "password" and "host" without being connection settings.
+SITE = (
+    '{"database": "postgres", "schema": "marts", "name": "price_index"}'
+    '{"metadata": {"owner": "postgres", "database": "postgres"}}'
+    'l.open(e.type,e.url,e.async,e.username,e.password);["port","protocol","host"]'
+)
+
+
+def test_a_site_built_from_the_throwaway_server_passes():
+    assert docs_problems(SITE, ["postgres"]) == []
+
+
+@pytest.mark.parametrize(
+    ("fragment", "problem"),
+    [
+        ('"relation_name": "x.ep-cool-darkness-123456.eu-central-1.aws.neon.tech"', "a Neon host or endpoint"),
+        ('{"owner": "neondb_owner"}', "a Neon database or role name"),
+        ("npg_AbC123xyz", "a Neon password"),
+        ("postgresql://user:pw@host/db", "a connection string or setting"),
+        ('{"host": "db.example"}', "a connection string or setting"),
+        ('{"database": "production"}', "a database name outside --allow"),
+    ],
+)
+def test_a_site_that_names_another_database_is_refused(fragment, problem):
+    problems = docs_problems(SITE + fragment, ["postgres"])
+    assert any(p.startswith(problem) for p in problems), problems
+    assert "darkness" not in " ".join(problems) and "AbC123" not in " ".join(problems)  # values are not repeated
+
+
+def test_check_docs_needs_no_database_and_fails_on_a_problem(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(runner, "database_url", lambda: None)
+    clean, leaked = tmp_path / "index.html", tmp_path / "leaked.html"
+    clean.write_text(SITE, encoding="utf-8")
+    leaked.write_text(SITE + '{"database": "neondb"}', encoding="utf-8")
+    assert runner.main(["check-docs", "--allow", "postgres", str(clean)]) == 0
+    assert runner.main(["check-docs", "--allow", "postgres", str(clean), str(leaked)]) == 1
+    assert "leaked.html: a Neon database or role name (1 places)" in capsys.readouterr().out
+    assert docs_problems("<html></html>", ["postgres"]) == [
+        "no database or owner names at all: not a dbt documentation file?"
+    ]

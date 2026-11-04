@@ -23,7 +23,13 @@ jobs:
   dbt:
     # The dbt project on a throwaway PostgreSQL 18 (Neon's version) with synthetic offers: two incremental builds, the
     # figures they give, and a full rebuild that must give the same marts (tests/test_dbt_models.py). No secret is used.
+    # The documentation site is built from the same server, so it names no production database or role.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      publish: ${{ steps.pages.outputs.publish }}
     services:
       postgres:
         image: postgres:18
@@ -42,7 +48,49 @@ jobs:
       - name: dbt models
         run: uv run pytest -q tests/test_dbt_models.py
       - name: dbt docs
-        # The documentation site must build; it is not published.
+        # One self-contained page (static_index.html). Before anything is published, every generated file is checked:
+        # no Neon host, database, role or password, no connection string, and no database or owner name but the
+        # throwaway server's "postgres". The page holds model and column descriptions and SQL, no data rows.
         env:
           NEON_DATABASE_URL: ${{ env.RADAR_TEST_DATABASE_URL }}
-        run: uv run python -m price_radar.transform.runner docs
+        run: |
+          uv run python -m price_radar.transform.runner docs
+          uv run python -m price_radar.transform.runner check-docs --allow postgres \
+            dbt/target/static_index.html dbt/target/manifest.json dbt/target/catalog.json
+          mkdir -p "$RUNNER_TEMP/site"
+          cp dbt/target/static_index.html "$RUNNER_TEMP/site/index.html"
+      - name: Is GitHub Pages set to deploy from Actions?
+        # Pushes to main publish the site once the repository's Pages source is "GitHub Actions"; until then nothing
+        # is uploaded and the deploy job is skipped.
+        id: pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>/dev/null || echo none)
+          echo "publish=$([ "$source" = workflow ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "::notice title=dbt docs::GitHub Pages source: $source"
+      - name: Upload the site
+        if: steps.pages.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/site
+
+  docs:
+    # The dbt documentation on GitHub Pages (decision of 4.11.2026).
+    needs: dbt
+    if: needs.dbt.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -3,11 +3,14 @@
     python -m price_radar.transform.runner build [--select SELECTOR] [--full-refresh] [--summary FILE] [--annotate]
         [--notify always|problems|never]
     python -m price_radar.transform.runner docs
+    python -m price_radar.transform.runner check-docs --allow NAME FILE [FILE ...]
 
 ``build`` runs ``dbt build``: the seeds, models and tests in dependency order, a model's tests before the models that
 read it. It exits 1 when a model, seed or test fails, so the nightly job fails and, with ``--notify problems``, Telegram
 gets an alert. A test configured to warn (an offer whose device or condition label the reference tables lack) keeps the
-exit code at 0 and is reported. ``docs`` writes the dbt documentation site to dbt/target.
+exit code at 0 and is reported. ``docs`` writes the dbt documentation site to dbt/target, also as one self-contained
+file (static_index.html). ``check-docs`` refuses a site that names the production database: the published site is
+built from CI's throwaway PostgreSQL, so its only database and owner names are that server's (``--allow``).
 
 The connection string is split into the variables dbt/profiles.yml reads. Host, user, password and database name go
 into variables with dbt's ``DBT_ENV_SECRET_`` prefix, which dbt scrubs from everything it logs, and the messages this
@@ -19,6 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 import time
 from collections import Counter
@@ -42,6 +46,17 @@ SECRET_VARIABLES = {
     "password": "DBT_ENV_SECRET_PASSWORD",
     "dbname": "DBT_ENV_SECRET_DBNAME",
 }
+# What a documentation site must not carry: Neon host names and endpoint ids, Neon's default database and owner role,
+# its password prefix, connection strings and connection settings. Each with what a report may say about it.
+FORBIDDEN_IN_DOCS = {
+    "a Neon host or endpoint": re.compile(r"neon\.tech|\bep-[a-z]+-[a-z]+-[a-z0-9]+", re.IGNORECASE),
+    "a Neon database or role name": re.compile(r"\bneondb", re.IGNORECASE),
+    "a Neon password": re.compile(r"\bnpg_[A-Za-z0-9]{6,}"),
+    "a connection string or setting": re.compile(
+        r'postgres(?:ql)?://|sslmode=|DBT_ENV_SECRET_|"(?:password|host|user|port)"\s*:', re.IGNORECASE
+    ),
+}
+NAMED_IN_DOCS = re.compile(r'"(database|owner)":\s*"([^"]*)"')
 PROBLEMS = {"error", "fail", "warn", "skipped", "runtime error"}
 FAILURES = {"error", "fail", "runtime error"}
 
@@ -166,6 +181,22 @@ def status_word(report: BuildReport) -> str:
     return "ALERT" if report.failed else "WARNING" if report.warned else "OK"
 
 
+def docs_problems(text: str, allowed_names: Iterable[str]) -> list[str]:
+    """What in a generated documentation file must not be published: a marker of the production database, or a database
+    or owner name other than ``allowed_names``. Found values are not repeated, only what they are and how often."""
+    problems = []
+    for kind, pattern in FORBIDDEN_IN_DOCS.items():
+        if found := len(pattern.findall(text)):
+            problems.append(f"{kind} ({found} places)")
+    allowed = set(allowed_names)
+    for field in ("database", "owner"):
+        if found := sum(1 for f, name in NAMED_IN_DOCS.findall(text) if f == field and name not in allowed):
+            problems.append(f"a {field} name outside --allow ({found} places)")
+    if not NAMED_IN_DOCS.search(text):
+        problems.append("no database or owner names at all: not a dbt documentation file?")
+    return problems
+
+
 def run_dbt(args: list[str], variables: Mapping[str, str]) -> Any:
     """Invoke dbt in this process with the connection variables set. Returns the dbtRunnerResult."""
     from dbt.cli.main import dbtRunner  # imported here: dbt is heavy and only this command needs it
@@ -217,8 +248,21 @@ def main(argv: list[str] | None = None) -> int:
         help="send a Telegram message always, only on failures and warnings, or never",
     )
     commands.add_parser("docs", help="write the documentation site to dbt/target")
+    check_cmd = commands.add_parser("check-docs", help="refuse documentation files that name the production database")
+    check_cmd.add_argument("files", type=Path, nargs="+")
+    check_cmd.add_argument(
+        "--allow", action="append", default=[], help="database and owner names the site may carry (repeatable)"
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
+
+    if args.command == "check-docs":
+        failed = False
+        for path in args.files:
+            problems = docs_problems(path.read_text(encoding="utf-8"), args.allow)
+            print(f"{path.name}: {'; '.join(problems) if problems else 'nothing that names the production database'}")
+            failed = failed or bool(problems)
+        return 1 if failed else 0
 
     url = database_url()
     if not url:
@@ -234,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     secrets = [url, *secrets_of(variables)]
 
     if args.command == "docs":
-        result = run_dbt(["docs", "generate"], variables)
+        result = run_dbt(["docs", "generate", "--static"], variables)
         print(f"dbt docs generate: {'done' if result.success else 'failed'}; site in {PROJECT_DIR / 'target'}")
         return 0 if result.success else 1
 

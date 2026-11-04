@@ -133,6 +133,11 @@ nightly run and goes to Telegram; an offer whose model or condition label the re
 `transform` workflow runs the build alone. CI builds the project twice on a throwaway PostgreSQL with synthetic
 offers and requires a full rebuild to give the same marts.
 
+The dbt documentation (every model and column, the tests and the lineage graph) is published from that throwaway
+server to GitHub Pages: <https://pnidatunca.github.io/iphone-price-radar/>. It holds no data rows, and before each
+upload CI checks the generated files for anything that names the production database
+(`python -m price_radar.transform.runner check-docs`).
+
 The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,
 the price index, depreciation by model age and the price of each condition. It reads the marts only, through a
 read-only database role, and caches them for two hours; [docs/streamlit.md](docs/streamlit.md) describes the role and
