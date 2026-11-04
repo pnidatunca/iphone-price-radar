@@ -127,6 +127,47 @@ models:
       - name: p75_difference_pct
       - name: computed_at
 
+  - name: daily_seller_positions
+    description: >
+      Day x platform x seller (A3): where a seller prices against the other sellers of the same segment. A seller's
+      price in a segment is the median over its offers there; its position is that price over the median of the
+      sellers' prices in the segment, minus 1. Only segments with at least `position_min_sellers` sellers are
+      compared. Seller numeric ids only: a published page shows anonymous labels (K22). Permanent, with the usual
+      lookback.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, platform, seller_key]
+    columns:
+      - name: snapshot_date
+        data_tests: [not_null]
+      - name: platform
+      - name: seller_key
+        description: "`{platform}:{seller id}`; no seller names (K22)."
+        data_tests: [not_null]
+      - name: seller_is_platform
+        description: The platform's own store.
+      - name: offer_count
+        description: In-stock offers of the seller that day.
+      - name: segment_count
+        description: Segments the seller has in-stock offers in.
+      - name: compared_segment_count
+        description: Of them, segments with at least `position_min_sellers` sellers.
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: compared_segment_count <= segment_count
+      - name: median_position_pct
+        description: Median over the compared segments of the seller's price over the segment's median seller price, minus 1, in percent. Empty when no segment is compared.
+      - name: p25_position_pct
+      - name: p75_position_pct
+      - name: below_median_count
+        description: Compared segments where the seller is below the median seller.
+      - name: above_median_count
+      - name: cheapest_count
+        description: Compared segments where the seller is the cheapest (ties count for each).
+      - name: computed_at
+
   - name: offer_lifecycle
     description: >
       One row per offer (variant and seller) over its whole life (plan 8.3): first and last day, first and last

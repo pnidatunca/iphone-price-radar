@@ -18,6 +18,7 @@ import psycopg
 import pytest
 from psycopg.types.json import Jsonb
 
+from price_radar.analysis import run as analysis
 from price_radar.storage import fx_rates, snapshots
 from price_radar.transform import runner
 
@@ -33,6 +34,7 @@ MARTS = {
     "daily_segment_prices": ("snapshot_date", "segment_id"),
     "daily_market": ("snapshot_date",),
     "daily_condition_premiums": ("snapshot_date", "condition_raw", "seller_group"),
+    "daily_seller_positions": ("snapshot_date", "seller_key"),
     "offer_lifecycle": ("offer_key",),
     "price_index": ("snapshot_date",),
 }
@@ -268,6 +270,70 @@ def test_conditions_are_compared_within_a_seller(db):
     # only Getmobil (seller 1) sells both conditions of the iPhone 13 128 GB, from D5 on; other sellers' İyi
     # offers have no Mükemmel offer of their own to compare with
     assert rows == [(day, group, 1, Decimal("-10.00")) for day in (D5, D6) for group in ("all", "platform")]
+
+
+def test_sellers_are_placed_against_the_segment_median(db):
+    conn, *_ = db
+    rows = {
+        (row[0], row[1]): row[2:]
+        for row in conn.execute(
+            "select snapshot_date, seller_key, segment_count, compared_segment_count, median_position_pct,"
+            " below_median_count, above_median_count, cheapest_count from marts.daily_seller_positions"
+        ).fetchall()
+    }
+    # From D5 the İyi segment has three sellers: 25000 (seller 4), 26000 (seller 3) and Getmobil's 27000. The
+    # Mükemmel segments have one or two, too few to compare.
+    for day in (D5, D6):
+        assert rows[day, "getmobil:1"] == (2, 1, Decimal("3.85"), 0, 1, 0)
+        assert rows[day, "getmobil:3"] == (1, 1, Decimal("0.00"), 0, 0, 0)
+        assert rows[day, "getmobil:4"] == (1, 1, Decimal("-3.85"), 1, 0, 1)
+        assert rows[day, "getmobil:2"] == (2, 0, None, 0, 0, 0)
+    assert rows[D4, "getmobil:4"] == (1, 0, None, 0, 0, 0)  # two İyi sellers on D4
+
+
+def test_the_analyses_run_on_the_marts(db):
+    values = VARS | {"analysis_days": 2, "analysis_min_offers": 1, "analysis_min_compared": 1}
+    compiled = analysis.compile_analyses(runner.connection_variables(TEST_URL), values)
+    assert [a.name for a in compiled] == analysis.ORDER
+    tables = {
+        t.name: [dict(zip(t.columns, row, strict=True)) for row in t.rows]
+        for t in analysis.run_analyses(TEST_URL, compiled)
+    }
+
+    (overview,) = tables["overview"]
+    assert (overview["start_day"], overview["end_day"], overview["days"], overview["window_start"]) == (D1, D6, 6, D5)
+
+    conditions = {row["condition"]: row for row in tables["a2_conditions"]}
+    # D5 and D6: the İyi median 26000 against the Mükemmel median 29500 mixes sellers; Getmobil's own İyi offer is 10%
+    # below its own Mükemmel offer
+    assert conditions["İyi"]["segment_median_pct"] == Decimal("-11.9")
+    assert (conditions["İyi"]["within_seller_pct"], conditions["İyi"]["within_seller_platform_pct"]) == (-10, -10)
+    assert conditions["İyi"]["within_seller_others_pct"] is None
+
+    platform, others = tables["a3_seller_positions"]
+    assert (platform["sellers"], platform["mean_position_pct"], platform["cheapest_pct"]) == (
+        "platform",
+        Decimal("3.9"),
+        0,
+    )
+    assert (others["active_sellers"], others["compared_segment_days"], others["mean_position_pct"]) == (
+        4,
+        4,
+        Decimal("-1.9"),
+    )
+    assert (others["cheapest_pct"], others["mapped_sellers"], others["within_5_pct"]) == (50, 2, 2)
+    assert len(tables["a3_seller_map"]) == 3
+
+    assert [(row["week_start"], row["days"]) for row in tables["a6_supply_weekly"]] == [
+        (date(2026, 10, 12), 2),
+        (date(2026, 10, 19), 4),
+    ]
+    (generation,) = tables["a1_age_curve"]
+    assert (generation["generation"], generation["segments"]) == (13, 2)
+    assert all(row["change_per_year_pct"] is None for row in tables["a1_fit"])  # one age: no slope
+    step, median = tables["a1_storage_steps"]
+    assert (step["from_gb"], step["to_gb"], step["apple_step_usd"]) == (128, 256, 100)
+    assert median["model"] == "median of 1 steps"
 
 
 def test_the_index_is_the_fixed_basket_formula_when_every_segment_is_priced(db):

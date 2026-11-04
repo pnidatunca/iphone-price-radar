@@ -7,6 +7,7 @@ config-version: 2
 profile: price_radar
 
 model-paths: ["models"]
+analysis-paths: ["analyses"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
@@ -24,6 +25,9 @@ vars:
   segment_condition: raw
   # The condition other conditions are compared with (marts.daily_condition_premiums).
   reference_condition: Mükemmel
+  # A seller's position is measured only in segments with at least this many sellers (marts.daily_seller_positions):
+  # with two, each seller is half the gap above or below the median.
+  position_min_sellers: 3
   # Days the incremental models compute again on every run: a fallback or manual run can add offers to recent days,
   # and the TCMB rate of a day is only certain once the next bulletin is stored.
   lookback_days: 3
@@ -35,6 +39,14 @@ vars:
   index_min_offers: 2
   # Read-only database role of the Streamlit app: granted select on the marts after every run, once it exists.
   reader_role: radar_reader
+  # Analyses (dbt/analyses, run by python -m price_radar.analysis.pilot): the period ends on analysis_end (empty: the
+  # latest day built) and its cross-sectional window is the last analysis_days days. A segment enters the depreciation
+  # figures with at least analysis_min_offers offers over the window, a seller the seller map with at least
+  # analysis_min_compared compared segment-days.
+  analysis_end: ""
+  analysis_days: 7
+  analysis_min_offers: 5
+  analysis_min_compared: 10
 
 models:
   price_radar:

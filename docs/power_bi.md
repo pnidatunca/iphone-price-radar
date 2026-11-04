@@ -15,6 +15,7 @@ hand, weekly and before the monthly report, so Neon's compute stays asleep the r
 | `marts.daily_market` | day × platform | KPI cards: offers, sellers, median prices, rate |
 | `marts.daily_segment_prices` | day × platform × segment | model explorer, depreciation (A1), spread (A3), supply (A6) |
 | `marts.daily_condition_premiums` | day × platform × condition × seller group | condition differences (A2) |
+| `marts.daily_seller_positions` | day × platform × seller | seller map: where each seller prices against the segment's median seller (A3) |
 | `marts.price_index` | day × platform | index trend (A5 draft) |
 | `marts.price_index_basket` | segment | what the index holds |
 | `marts.offer_lifecycle` | offer (variant × seller) | repricing (A7), time on sale (A8) |
@@ -46,7 +47,8 @@ one-to-many to `daily_segment_prices[segment_id]` and `price_index_basket[segmen
 **Anonymous sellers (K22).** In Power Query, reference `offer_lifecycle`, group by `seller_key` with the minimum of
 `first_seen`, sort by that date and then by `seller_key`, add an index column from 1 and a column
 `"Satıcı " & Text.From([Index])`. Sellers keep their label when new ones appear, because a new seller sorts last.
-Relate the table to `offer_lifecycle[seller_key]` and never put `seller_key` itself on a published page.
+Relate the table to `offer_lifecycle[seller_key]` and `daily_seller_positions[seller_key]`, and never put
+`seller_key` itself on a published page.
 
 A calculated column for the depreciation chart:
 
@@ -152,6 +154,33 @@ AVERAGEX (
         daily_segment_prices[p75_price_tl] - daily_segment_prices[p25_price_tl],
         daily_segment_prices[median_price_tl]
     )
+)
+```
+
+**Seller map (A3).** A seller's position against the segment's median seller, weighted by the segments compared,
+and how often it is the cheapest; a scatter of `Seller offers a day` against `Seller position` with the anonymous
+label as details is the seller map:
+
+```DAX
+Seller position =
+DIVIDE (
+    SUMX (
+        daily_seller_positions,
+        daily_seller_positions[median_position_pct] * daily_seller_positions[compared_segment_count]
+    ),
+    SUM ( daily_seller_positions[compared_segment_count] )
+) / 100
+
+Seller cheapest share =
+DIVIDE (
+    SUM ( daily_seller_positions[cheapest_count] ),
+    SUM ( daily_seller_positions[compared_segment_count] )
+)
+
+Seller offers a day =
+DIVIDE (
+    SUM ( daily_seller_positions[offer_count] ),
+    DISTINCTCOUNT ( daily_seller_positions[snapshot_date] )
 )
 ```
 

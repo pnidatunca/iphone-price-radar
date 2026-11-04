@@ -124,7 +124,7 @@ takes the connection from `NEON_DATABASE_URL` and never prints it):
 |---|---|---|
 | Staging (views) | `staging` | `stg_offer_snapshots` rebuilds every day's full offer: the payload of the offer's latest change, and list prices of rows stored before the column existed; `stg_fx_rates`, `stg_devices` |
 | Core | `core` | `dim_device`, `dim_condition` (seed `ref.condition_map`), `dim_seller` (numeric ids only), `fct_offer_daily`: one row per offer and day with its segment and its price in lira and in dollars (the TCMB rate announced before the day) |
-| Marts (permanent) | `marts` | `daily_segment_prices` (day × segment: offers and price distribution), `daily_market`, `daily_condition_premiums` (what a seller asks for a condition against its own Mükemmel offer of the same device), `offer_lifecycle` (one row per offer over its life), `price_index_basket` and `price_index` (fixed-basket refurbished iPhone price index, TL and USD, first draft) |
+| Marts (permanent) | `marts` | `daily_segment_prices` (day × segment: offers and price distribution), `daily_market`, `daily_condition_premiums` (what a seller asks for a condition against its own Mükemmel offer of the same device), `daily_seller_positions` (where each seller prices against the segment's median seller), `offer_lifecycle` (one row per offer over its life), `price_index_basket` and `price_index` (fixed-basket refurbished iPhone price index, TL and USD, first draft) |
 
 A segment is model + storage + condition. The marts are incremental with `full_refresh: false`: their raw detail is
 deleted after 90 days, so each run computes the last 3 days again (a later run may add offers to them) and keeps the
@@ -138,6 +138,12 @@ server to GitHub Pages: <https://pnidatunca.github.io/iphone-price-radar/>. It h
 upload CI checks the generated files for anything that names the production database
 (`python -m price_radar.transform.runner check-docs`). Power BI imports the same marts through a read-only role;
 [docs/power_bi.md](docs/power_bi.md) describes the model and drafts the DAX measures.
+
+The analyses (plan 10.1: depreciation by age, condition differences, the spread between sellers, supply) and the
+headline figures of the market reports are SQL files in `dbt/analyses/` over the marts. The manual `analysis`
+workflow runs them read-only on Neon (`python -m price_radar.analysis.run`) and puts their tables in the job summary
+and a 14-day artifact: aggregates only, sellers ranked rather than named. [docs/analyses.md](docs/analyses.md)
+describes each method and what to read with care.
 
 The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,
 the price index, depreciation by model age and the price of each condition. It reads the marts only, through a

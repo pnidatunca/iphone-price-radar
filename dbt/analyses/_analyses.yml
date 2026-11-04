@@ -1,0 +1,60 @@
+version: 2
+
+# The analyses of plan 10.1 (A1-A3, A6) and the headline figures of a market report. dbt compiles them and never
+# runs them; python -m price_radar.analysis.pilot runs them read-only and writes their tables (docs/analyses.md).
+# Each reads the marts only, so it can be run again after the raw detail is deleted.
+
+analyses:
+  - name: overview
+    description: >
+      The period, the market's size and price level over the last `analysis_days` days, the change in offers from the
+      first days, the TCMB rate and the price index (100 = the base period). The median price moves with the mix of
+      models on sale; the index does not.
+
+  - name: a1_age_curve
+    description: >
+      A1a, cross-sectional depreciation: by generation, the dollar price of Mükemmel segments over their US launch
+      price, and the change from one generation newer. US prices exclude Turkish taxes, so a ratio above 1 is normal;
+      the curve compares models of different ages, not one model over time.
+
+  - name: a1_fit
+    description: >
+      A1a as one number: a fit of ln(price / US launch price) on age in years over the same segments, for all models,
+      the Pro models and the others. `change_per_year_pct` is what one more year of age costs.
+
+  - name: a1_storage_steps
+    description: >
+      What more storage is worth second-hand: each model's step to the next size, Apple's US launch price step against
+      the step between the refurbished prices, and the share of Apple's step the refurbished price keeps.
+
+  - name: a2_conditions
+    description: >
+      A2, what a condition costs against Mükemmel, measured on segment medians and within the same seller. The
+      within-seller figures keep the seller mix out; where they differ from the segment medians, the platform's share
+      of the condition explains it.
+
+  - name: a3_spread
+    description: >
+      A3, how far the offers of the same segment lie apart on one day, by the number of sellers in the segment: the
+      interquartile range and the full range over the median, and how far below the median the cheapest offer is.
+
+  - name: a3_seller_positions
+    description: >
+      A3, where the platform's own store and the other sellers price against the segment's median seller, and how many
+      sellers price more than 5% below or above it.
+
+  - name: a3_seller_map
+    description: >
+      A3, the anonymous seller map: one row per seller with enough compared segments, ranked by offers instead of
+      named (K22).
+
+  - name: a6_supply_weekly
+    description: >
+      A6, the supply week by week: offers and sellers a day, the platform's share, and new and ended offers a day.
+      An ended offer is not necessarily a sale.
+
+  - name: a6_supply_by_generation
+    description: A6, offers a day by generation over the first and the last days of the period, and the change.
+
+  - name: a6_supply_by_model
+    description: A6, offers a day by model over the first and the last days of the period, and the change.

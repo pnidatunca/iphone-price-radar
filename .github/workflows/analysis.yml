@@ -1,0 +1,53 @@
+name: analysis
+
+# The analyses of dbt/analyses (plan 10.1: A1-A3, A6) and the headline figures of a market report, run read-only on
+# Neon's marts (python -m price_radar.analysis.run, docs/analyses.md). The tables go to the job summary and, as CSV
+# files, to a short-lived artifact. They hold aggregates only: the module refuses a column that identifies a seller or
+# an offer, and the seller map ranks sellers instead of naming them (K22).
+
+on:
+  workflow_dispatch:
+    inputs:
+      end:
+        description: last day of the period, YYYY-MM-DD (empty = the latest day built)
+        type: string
+        default: ""
+      days:
+        description: days of the cross-sectional window
+        type: string
+        default: "7"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not while the nightly run rebuilds the marts.
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  analyses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      END: ${{ inputs.end }}
+      DAYS: ${{ inputs.days }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Analyses
+        run: |
+          args=(--out "$RUNNER_TEMP/analyses" --summary "$GITHUB_STEP_SUMMARY")
+          if [ -n "$END" ]; then args+=(--end "$END"); fi
+          if [ -n "$DAYS" ]; then args+=(--days "$DAYS"); fi
+          uv run python -m price_radar.analysis.run "${args[@]}"
+      - name: Upload the tables
+        uses: actions/upload-artifact@v7
+        with:
+          name: analyses
+          path: ${{ runner.temp }}/analyses
+          retention-days: 14
+          if-no-files-found: error
