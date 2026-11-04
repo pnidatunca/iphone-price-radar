@@ -324,10 +324,14 @@ def test_the_analyses_run_on_the_marts(db):
     assert (others["cheapest_pct"], others["mapped_sellers"], others["within_5_pct"]) == (50, 2, 2)
     assert len(tables["a3_seller_map"]) == 3
 
-    assert [(row["week_start"], row["days"]) for row in tables["a6_supply_weekly"]] == [
-        (date(2026, 10, 12), 2),
-        (date(2026, 10, 19), 4),
+    # Flows 3 days away from the ends only: new offers from D4 (F, G and the unknown model, one a day), ended offers on
+    # D2 to D4 (none: B was missing on D4 but returned)
+    weeks = [
+        (row["week_start"], row["days"], row["new_days"], row["new_offers_a_day"], row["ended_days"])
+        for row in tables["a6_supply_weekly"]
     ]
+    assert weeks == [(date(2026, 10, 12), 2, 0, None, 1), (date(2026, 10, 19), 4, 3, 1, 2)]
+    assert {row["ended_offers_a_day"] for row in tables["a6_supply_weekly"]} == {0}
     (generation,) = tables["a1_age_curve"]
     assert (generation["generation"], generation["segments"]) == (13, 2)
     assert all(row["change_per_year_pct"] is None for row in tables["a1_fit"])  # one age: no slope

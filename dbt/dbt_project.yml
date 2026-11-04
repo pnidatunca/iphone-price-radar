@@ -42,11 +42,13 @@ vars:
   # Analyses (dbt/analyses, run by python -m price_radar.analysis.pilot): the period ends on analysis_end (empty: the
   # latest day built) and its cross-sectional window is the last analysis_days days. A segment enters the depreciation
   # figures with at least analysis_min_offers offers over the window, a seller the seller map with at least
-  # analysis_min_compared compared segment-days.
+  # analysis_min_compared compared segment-days. Offers often leave stock for a day or two and return, so new and ended
+  # offers are counted only analysis_settle_days days away from the start and the end of the period.
   analysis_end: ""
   analysis_days: 7
   analysis_min_offers: 5
   analysis_min_compared: 10
+  analysis_settle_days: 3
 
 models:
   price_radar:

@@ -50,8 +50,9 @@ analyses:
 
   - name: a6_supply_weekly
     description: >
-      A6, the supply week by week: offers and sellers a day, the platform's share, and new and ended offers a day.
-      An ended offer is not necessarily a sale.
+      A6, the supply week by week: offers and sellers a day, the platform's share, and new and ended offers a day,
+      counted only `analysis_settle_days` days away from the start and the end of the period (offers often leave
+      stock for a day and return). An ended offer is not necessarily a sale.
 
   - name: a6_supply_by_generation
     description: A6, offers a day by generation over the first and the last days of the period, and the change.
