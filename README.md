@@ -6,7 +6,25 @@ On this data it will estimate the fair price of each device with an uncertainty 
 clearly below the market.
 
 **Status:** Phase 1 (data pipeline) completed on 3.11.2026: nightly collection into PostgreSQL, health checks with
-Telegram alerts, a weekly Parquet archive and the device reference table. Next: Phase 2 (analytics).
+Telegram alerts, a weekly Parquet archive and the device reference table. Phase 2 (analytics) is under way: dbt models
+with their [documentation](https://pnidatunca.github.io/iphone-price-radar/), the analyses behind the market reports,
+and the first report.
+
+## First findings
+
+From the [pilot market report](reports/2026-11-pilot.md), 12 October – 4 November 2026:
+
+- **A model one year older sells for about 22% less in dollars**, from 1-year-old to 8-year-old models and for Pro and
+  non-Pro models alike.
+- **Comparing sellers pays.** Where ten or more sellers offer the same phone in the same condition, the cheapest offer
+  is typically 18% (about 8,800 TL) below the median.
+- **Condition labels cost less than they appear to.** Within the same seller, Premium is priced like Mükemmel; segment
+  medians suggest a 10% discount only because the platform's own, cheaper store sells most Premium offers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="reports/figures/2026-11/depreciation-dark.svg">
+  <img src="reports/figures/2026-11/depreciation-light.svg" alt="On a log scale, the price over the US launch price falls from 2.3 for one-year-old models to 0.4 for eight-year-old ones, close to a straight line of 22.1% a year.">
+</picture>
 
 ## What it will do
 
