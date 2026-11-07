@@ -1,0 +1,48 @@
+name: backtest
+
+# The rolling backtest of the price model (plan 11.6, docs/model.md). The daily offers are read read-only from Neon
+# into the runner's temporary directory (python -m price_radar.model.dataset extract), and the models are trained and
+# tested on them week by week (python -m price_radar.model.backtest). The offers hold numeric seller ids and never
+# leave the runner; the errors and coefficients, aggregates only, go to the job summary and a 14-day artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      folds:
+        description: test weeks, the latest first
+        type: string
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not while the nightly run rebuilds core.fct_offer_daily.
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      FOLDS: ${{ inputs.folds }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Install dependencies
+        run: uv sync --locked --group model
+      - name: Offers
+        run: uv run python -m price_radar.model.dataset extract --out "$RUNNER_TEMP/offers/offer_daily.parquet"
+      - name: Backtest
+        run: |
+          uv run python -m price_radar.model.backtest "$RUNNER_TEMP/offers/offer_daily.parquet" \
+            --folds "${FOLDS:-3}" --out "$RUNNER_TEMP/backtest" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Upload the results
+        uses: actions/upload-artifact@v7
+        with:
+          name: backtest
+          path: ${{ runner.temp }}/backtest
+          retention-days: 14
+          if-no-files-found: error

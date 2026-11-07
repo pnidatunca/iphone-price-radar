@@ -669,6 +669,10 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+model = [
+    { name = "numpy" },
+    { name = "pandas" },
+]
 report = [
     { name = "matplotlib" },
 ]
@@ -690,6 +694,10 @@ app = [{ name = "streamlit", specifier = ">=1.66.1" }]
 dev = [
     { name = "pytest", specifier = ">=8.2" },
     { name = "ruff", specifier = ">=0.6" },
+]
+model = [
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pandas", specifier = ">=2.2" },
 ]
 report = [{ name = "matplotlib", specifier = ">=3.9" }]
 

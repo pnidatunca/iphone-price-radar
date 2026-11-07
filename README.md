@@ -164,6 +164,12 @@ and a 14-day artifact: aggregates only, sellers ranked rather than named. The re
 tables (`python -m price_radar.analysis.charts`, in the same artifact). [docs/analyses.md](docs/analyses.md)
 describes each method and what to read with care.
 
+The price model (Phase 3, plan 11) learns from the same offers. `python -m price_radar.model.dataset extract` reads
+the daily offers read-only into a local Parquet file, which is never committed. `python -m price_radar.model.backtest`
+turns them into offer-price pairs, trains the baseline (M0, the segment median) and a log-linear hedonic model (M1),
+and tests them week by week on pairs first seen in the test week. The manual `backtest` workflow does both on GitHub
+Actions and keeps aggregates only. [docs/model.md](docs/model.md) describes the method and the latest results.
+
 The Streamlit app in `app/` is the public live view of the marts (plan 13): the Market page shows the day's figures,
 the price index, depreciation by model age and the price of each condition. It reads the marts only, through a
 read-only database role, and caches them for two hours; [docs/streamlit.md](docs/streamlit.md) describes the role and
