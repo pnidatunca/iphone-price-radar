@@ -145,8 +145,10 @@ def load(conn: psycopg.Connection, rows: list[dict]) -> None:
     insert(conn, "raw.offer_snapshots", rows)
 
 
-def build(**extra_vars):
-    report = runner.build(runner.connection_variables(TEST_URL), extra=["--vars", json.dumps(VARS | extra_vars)])
+def build(select: str | None = None, **extra_vars):
+    report = runner.build(
+        runner.connection_variables(TEST_URL), select=select, extra=["--vars", json.dumps(VARS | extra_vars)]
+    )
     assert not report.failed, runner.report_lines(report)
     return report
 
@@ -347,7 +349,9 @@ def test_the_analyses_run_on_the_marts(db, tmp_path):
 
 def test_the_index_is_the_fixed_basket_formula_when_every_segment_is_priced(db):
     conn, *_ = db
-    basket = conn.execute("select segment_id, weight, base_price_tl from marts.price_index_basket").fetchall()
+    basket = conn.execute(
+        "select segment_id, weight, ref_price_tl from marts.price_index_basket where basket_start = %s", (D3,)
+    ).fetchall()
     assert {segment for segment, *_ in basket} == {
         "iPhone 13 128 GB · Mükemmel",
         "iPhone 13 256 GB · Mükemmel",
@@ -383,3 +387,44 @@ def test_a_full_rebuild_gives_the_marts_the_incremental_runs_built(db):
     build()
     for name, key in MARTS.items():
         assert table(conn, name, key) == incremental[name], name
+
+
+def test_a_new_basket_takes_over_on_its_first_day_and_carries_the_index_on(db):
+    conn, *_ = db
+    # Monthly renewal from D5: its basket is chosen from the month before it, which holds D1 to D4.
+    build("price_index_basket+", index_renewal_start=D5.isoformat())
+    try:
+        baskets: dict[date, dict[str, tuple[Decimal, Decimal]]] = {}
+        for start, segment, weight, price in conn.execute(
+            "select basket_start, segment_id, weight, ref_price_tl from marts.price_index_basket"
+        ).fetchall():
+            baskets.setdefault(start, {})[segment] = (weight, price)
+        assert set(baskets) == {D3, D5}
+        # weights: the offers of D1 to D4 (7, 4 and 5 of 16) instead of those of the base period D3 to D4 (3, 2, 3)
+        assert {segment: weight for segment, (weight, _) in baskets[D5].items()} == {
+            "iPhone 13 128 GB · Mükemmel": Decimal("0.4375"),
+            "iPhone 13 256 GB · Mükemmel": Decimal("0.25"),
+            "iPhone 13 128 GB · İyi": Decimal("0.3125"),
+        }
+        medians = dict(
+            ((day, segment), price)
+            for day, segment, price in conn.execute(
+                "select snapshot_date, segment_id, median_price_tl from marts.daily_segment_prices"
+            ).fetchall()
+        )
+
+        def level(start: date, day: date) -> Decimal:
+            return sum(weight * medians[day, segment] / price for segment, (weight, price) in baskets[start].items())
+
+        index = dict(conn.execute("select snapshot_date, index_tl from marts.price_index").fetchall())
+        assert set(index) == {D3, D4, D5, D6}
+        for day in (D3, D4):  # the base basket, as before
+            assert abs(index[day] - 100 * level(D3, day)) < Decimal("0.01"), day
+        for day in (D5, D6):  # the new basket, linked on D5 to D4 measured with it
+            expected = index[D4] * level(D5, day) / level(D5, D4)
+            assert abs(index[day] - expected) < Decimal("0.01"), (day, index[day], expected)
+        # carrying on with the base basket would have given another figure
+        assert abs(index[D5] - index[D4] * level(D3, D5) / level(D3, D4)) > Decimal("0.01")
+    finally:
+        build("price_index_basket+")  # the module's single basket again
+    assert conn.execute("select count(distinct basket_start) from marts.price_index_basket").fetchone() == (1,)

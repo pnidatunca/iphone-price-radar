@@ -210,44 +210,55 @@ models:
 
   - name: price_index_basket
     description: >
-      The fixed basket of the price index (plan 10.3, first draft): segments priced on at least `index_min_day_share`
-      of the base period's days with at least `index_min_offers` offers a day on average, weighted by their share of
-      the base period's offers. `final` turns true once the base period's days are no longer computed again.
+      The baskets of the price index (plan 10.3), one row per basket and segment. The first basket is the base
+      period's; from `index_renewal_start` a new one takes over on the first day of every month, chosen from the month
+      before it, so that newly launched models enter the index. A basket holds the segments priced on at least
+      `index_min_day_share` of its reference period's days with at least `index_min_offers` offers a day on average,
+      weighted by their share of the period's offers. `final` turns true once the period's days are no longer
+      computed again.
     data_tests:
       - unique_combination:
           arguments:
-            columns: [platform, segment_id]
+            columns: [platform, basket_start, segment_id]
     columns:
       - name: platform
+      - name: basket_start
+        description: First day the basket prices (the base period's first day, then the first day of a month).
+        data_tests: [not_null]
+      - name: basket_end
+        description: Last day the basket prices, the day before the next one starts; empty for the latest basket.
       - name: segment_id
       - name: model
       - name: storage_gb
       - name: segment_condition
-      - name: base_start
-        description: First day of the base period (var index_base_start).
-      - name: base_end
-        description: Last day of the base period (var index_base_end).
-      - name: base_days
-        description: Days of the base period with data.
+      - name: ref_start
+        description: First day of the reference period the basket is chosen from (the base period, or the month before).
+      - name: ref_end
+        description: Last day of the reference period.
+      - name: ref_days
+        description: Days of the reference period with data.
       - name: final
-        description: The base period's days are out of the lookback window, so the basket no longer changes.
+        description: The reference period's days are out of the lookback window, so the basket no longer changes.
       - name: days_priced
-        description: Base days the segment had in-stock offers.
+        description: Reference days the segment had in-stock offers.
       - name: avg_offers
         description: Offers a day on those days.
-      - name: base_offers
-        description: Offers over the base period.
+      - name: ref_offers
+        description: Offers over the reference period.
       - name: weight
-        description: Share of the base period's offers within the basket; sums to 1 per platform.
-      - name: base_price_tl
-        description: Median of the segment's daily median prices over the base period.
-      - name: base_price_usd
+        description: Share of the reference period's offers within the basket; sums to 1 per platform and basket.
+      - name: ref_price_tl
+        description: >
+          Median of the segment's daily median prices over the reference period; the day's median divided by it is
+          the segment's price relative.
+      - name: ref_price_usd
 
   - name: price_index
     description: >
-      Refurbished iPhone price index, fixed basket, first draft (plan 10.3): 100 = the base period's prices, in lira
-      and in dollars. Days are chain linked over the segments priced on both days, so a missing segment neither breaks
-      nor biases the series. Not age adjusted: the basket's devices age, so the index also falls by depreciation (the
+      Refurbished iPhone price index (plan 10.3): 100 = the base period's prices, in lira and in dollars. Each day is
+      priced with the basket in effect on it (`price_index_basket`) and chain linked to the day before over the
+      segments priced on both days, both measured with that day's basket. So a missing segment neither breaks nor
+      biases the series, and a new month's basket carries the index on from the day before it. Not age adjusted: the basket's devices age, so the index also falls by depreciation (the
       age-adjusted hedonic index comes with the model in Phase 3).
     data_tests:
       - unique_combination:
@@ -266,21 +277,23 @@ models:
       - name: index_usd
         data_tests: [not_null]
       - name: segments_priced
-        description: Basket segments with in-stock offers that day.
+        description: Segments of the day's basket with in-stock offers that day.
       - name: segments_matched
         description: Of them, those priced on the previous day too; the day's change is measured on these. Empty on the first day.
       - name: basket_segments
+        description: Segments in the day's basket.
       - name: weight_priced
         description: Basket weight priced that day; a low value (a short run) makes the day less reliable.
       - name: link_tl
         description: Change from the previous day over the matched segments (1 = unchanged).
       - name: link_usd
       - name: base_start
+        description: First day of the base period (100), var index_base_start.
       - name: base_end
       - name: basket_final
-        description: The basket no longer changes (see price_index_basket.final).
+        description: The day's basket no longer changes (see price_index_basket.final).
       - name: basket_checksum
-        description: Fingerprint of the basket the day was computed with.
+        description: Fingerprint of all the baskets the day was computed with.
       - name: fx_confirmed
         description: The dollar figures use final TCMB rates.
       - name: computed_at

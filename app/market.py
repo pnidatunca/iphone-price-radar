@@ -303,16 +303,17 @@ def render() -> None:
     if index.empty:
         st.info("The index starts once its base period is complete.")
     else:
-        first = index.iloc[0]
+        latest = index.iloc[-1]
         st.altair_chart(
             index_chart(index, mode), width="stretch", alt="Line chart of the price index in lira and in dollars"
         )
         st.caption(
-            f"Fixed basket of {int(first['basket_segments'])} segments (model, storage and condition), weighted by "
-            f"their offers in the base period {first['base_start']:%d.%m}–{first['base_end']:%d.%m.%Y} = 100; days "
-            "are chain linked over the segments priced on both days. Not age adjusted: the devices in the basket "
-            "age, so the index also falls with depreciation."
-            + ("" if bool(index.iloc[-1]["basket_final"]) else " The base period is still being completed.")
+            f"Basket of {int(latest['basket_segments'])} segments (model, storage and condition), weighted by their "
+            "offers. It is renewed every month from the month before, so newly launched models enter, and linked to "
+            f"the series on its first day; 100 = the base period {latest['base_start']:%d.%m}–"
+            f"{latest['base_end']:%d.%m.%Y}. Days are chain linked over the segments priced on both days. Not age "
+            "adjusted: the devices in the basket age, so the index also falls with depreciation."
+            + ("" if bool(latest["basket_final"]) else " The latest basket is still being completed.")
         )
 
     left, right = st.columns(2)

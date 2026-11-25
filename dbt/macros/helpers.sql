@@ -13,6 +13,20 @@
     (select coalesce(max({{ date_column }}), date '1900-01-01') - {{ var('lookback_days') }} from {{ this }})
 {%- endmacro %}
 
+{#- One fingerprint per platform of all the price index's baskets: price_index stores it on every row and writes all
+    its days again when it changes, and a test requires that every stored row carries the current one. -#}
+{% macro index_basket_checksums() -%}
+    select
+        platform,
+        md5(string_agg(
+            to_char(basket_start, 'YYYY-MM-DD') || ':' || segment_id || ':' || weight || ':' || ref_price_tl || ':'
+                || ref_price_usd,
+            '|' order by basket_start, segment_id
+        )) as basket_checksum
+    from {{ ref('price_index_basket') }}
+    group by platform
+{%- endmacro %}
+
 {#- The segment of an offer (plan 8.2): its device and its condition on the basis var('segment_condition') names. -#}
 {% macro segment_condition(raw_column, common_column) -%}
     {%- set basis = var('segment_condition') -%}

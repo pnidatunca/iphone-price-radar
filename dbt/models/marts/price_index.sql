@@ -1,14 +1,18 @@
--- Refurbished iPhone price index, fixed basket, first draft (plan 10.3), in lira and dollars; 100 = the base period.
+-- Refurbished iPhone price index (plan 10.3), in lira and dollars; 100 = the base period's prices.
 --
--- A day's level is the weighted mean of its basket segments' price relatives (median / base price) over the segments
--- priced that day. From one day to the next the index moves by the change of that mean over the segments priced on
--- both days, so a segment missing on a day neither breaks nor biases the series: its weight goes to the others
--- (chain linking). With every segment priced on every day this is exactly the fixed-basket formula.
+-- Each day is priced with the basket in effect on it (price_index_basket): the base period's until
+-- index_renewal_start, then each month's own. A day's level is the weighted mean of its basket segments' price
+-- relatives (median / reference price) over the segments priced that day. From one day to the next the index moves by
+-- the change of that mean over the segments priced on both days, both days measured with the later day's basket
+-- (chain linking). So a segment missing on a day neither breaks nor biases the series: its weight goes to the others.
+-- And on the first day of a new basket the index carries on from the day before:
+-- index_t = index_t-1 × (new basket_t / new basket_t-1). With one basket and every segment priced on every day this is
+-- exactly the fixed-basket formula.
 --
 -- The whole series follows from the permanent daily_segment_prices. A run writes the last lookback_days days and
--- keeps the older ones, unless the basket differs from the one the stored rows were computed with (its base period
--- was still being computed again, or its settings changed): then it writes every day. Each row carries the checksum of
--- its basket, and a test fails if stored rows of an older basket remain (docs/reprocessing.md).
+-- keeps the older ones, unless the baskets differ from those the stored rows were computed with (a new month's basket,
+-- one whose reference period was still being computed again, or changed settings): then it writes every day. Each row
+-- carries the checksum of the baskets, and a test fails if stored rows of older baskets remain (docs/reprocessing.md).
 
 {{ config(
     unique_key=['snapshot_date', 'platform'],
@@ -16,32 +20,51 @@
     on_schema_change='fail',
 ) }}
 
-with relatives as (
+with baskets as (
+    select
+        platform,
+        basket_start,
+        coalesce(basket_end, date '9999-12-31') as basket_end,
+        count(*) as basket_segments,
+        bool_and(final) as basket_final
+    from {{ ref('price_index_basket') }}
+    group by platform, basket_start, basket_end
+),
+
+relatives as (
+    -- the days of each basket, and of the month before it: its first day is linked to the day before with its own
+    -- reference prices
     select
         p.platform,
         p.snapshot_date,
+        b.basket_start,
         p.segment_id,
         b.weight,
-        p.median_price_tl / b.base_price_tl as relative_tl,
-        p.median_price_usd / b.base_price_usd as relative_usd,
+        p.median_price_tl / b.ref_price_tl as relative_tl,
+        p.median_price_usd / b.ref_price_usd as relative_usd,
         p.fx_confirmed
     from {{ ref('daily_segment_prices') }} p
     join {{ ref('price_index_basket') }} b using (platform, segment_id)
     where p.snapshot_date >= date '{{ var("index_base_start") }}'
+        and p.snapshot_date between b.basket_start - 31 and coalesce(b.basket_end, date '9999-12-31')
 ),
 
 days as (
+    -- each day with the basket in effect on it
     select
-        platform,
-        snapshot_date,
-        lag(snapshot_date) over (partition by platform order by snapshot_date) as previous_date,
+        r.platform,
+        r.snapshot_date,
+        r.basket_start,
+        lag(r.snapshot_date) over (partition by r.platform order by r.snapshot_date) as previous_date,
         count(*) as segments_priced,
-        sum(weight) as weight_priced,
-        sum(weight * relative_tl) / sum(weight) as level_tl,
-        sum(weight * relative_usd) / sum(weight) as level_usd,
-        bool_and(fx_confirmed) as fx_confirmed
-    from relatives
-    group by platform, snapshot_date
+        sum(r.weight) as weight_priced,
+        sum(r.weight * r.relative_tl) / sum(r.weight) as level_tl,
+        sum(r.weight * r.relative_usd) / sum(r.weight) as level_usd,
+        bool_and(r.fx_confirmed) as fx_confirmed
+    from relatives r
+    join baskets b using (platform, basket_start)
+    where r.snapshot_date between b.basket_start and b.basket_end
+    group by r.platform, r.snapshot_date, r.basket_start
 ),
 
 links as (
@@ -52,9 +75,11 @@ links as (
         sum(c.weight * c.relative_tl) / sum(c.weight * p.relative_tl) as link_tl,
         sum(c.weight * c.relative_usd) / sum(c.weight * p.relative_usd) as link_usd
     from days d
-    join relatives c on c.platform = d.platform and c.snapshot_date = d.snapshot_date
+    join relatives c
+        on c.platform = d.platform and c.basket_start = d.basket_start and c.snapshot_date = d.snapshot_date
     join relatives p
-        on p.platform = d.platform and p.snapshot_date = d.previous_date and p.segment_id = c.segment_id
+        on p.platform = d.platform and p.basket_start = d.basket_start and p.snapshot_date = d.previous_date
+        and p.segment_id = c.segment_id
     group by d.platform, d.snapshot_date
 ),
 
@@ -62,6 +87,7 @@ series as (
     select
         d.platform,
         d.snapshot_date,
+        d.basket_start,
         d.segments_priced,
         l.segments_matched,
         d.weight_priced,
@@ -76,16 +102,8 @@ series as (
     window chain as (partition by d.platform order by d.snapshot_date rows between unbounded preceding and current row)
 ),
 
-basket as (
-    select
-        platform,
-        count(*) as basket_segments,
-        bool_and(final) as basket_final,
-        md5(string_agg(
-            segment_id || ':' || weight || ':' || base_price_tl || ':' || base_price_usd, '|' order by segment_id
-        )) as basket_checksum
-    from {{ ref('price_index_basket') }}
-    group by platform
+checksums as (
+    {{ index_basket_checksums() }}
 )
 
 select
@@ -102,14 +120,15 @@ select
     date '{{ var("index_base_start") }}' as base_start,
     date '{{ var("index_base_end") }}' as base_end,
     b.basket_final,
-    b.basket_checksum,
+    c.basket_checksum,
     s.fx_confirmed,
     now() as computed_at
 from series s
-join basket b using (platform)
+join baskets b using (platform, basket_start)
+join checksums c using (platform)
 {% if is_incremental() %}
 where s.snapshot_date >= {{ lookback_start('snapshot_date') }}
     or exists (
-        select 1 from {{ this }} t where t.platform = s.platform and t.basket_checksum <> b.basket_checksum
+        select 1 from {{ this }} t where t.platform = s.platform and t.basket_checksum <> c.basket_checksum
     )
 {% endif %}

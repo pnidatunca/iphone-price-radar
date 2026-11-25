@@ -17,7 +17,7 @@ hand, weekly and before the monthly report, so Neon's compute stays asleep the r
 | `marts.daily_condition_premiums` | day × platform × condition × seller group | condition differences (A2) |
 | `marts.daily_seller_positions` | day × platform × seller | seller map: where each seller prices against the segment's median seller (A3) |
 | `marts.price_index` | day × platform | index trend (A5 draft) |
-| `marts.price_index_basket` | segment | what the index holds |
+| `marts.price_index_basket` | basket (base period, then one a month) × segment | what the index holds |
 | `marts.offer_lifecycle` | offer (variant × seller) | repricing (A7), time on sale (A8) |
 
 `offer_lifecycle` is offer-level: an imported copy carries every offer's seller key. Keep the `.pbix` out of the
@@ -104,7 +104,8 @@ VAR Before = CALCULATE ( MAX ( price_index[index_tl] ), 'Date'[Date] = EDATE ( L
 RETURN DIVIDE ( LatestValue - Before, Before )
 ```
 
-The draft index is not age adjusted (plan 10.3): it also falls as the basket's devices age.
+The index is not age adjusted (plan 10.3): it also falls as the basket's devices age. `price_index_basket` holds
+one basket a month after the base period's; filter it on the latest `basket_start` to show what the index holds today.
 
 **Model explorer and depreciation (A1).** Segment medians averaged with their offers as weights:
 

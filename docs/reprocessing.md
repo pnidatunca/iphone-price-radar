@@ -10,7 +10,7 @@ deliberate step and drops the table first.
 | Change | What to rebuild | Signal |
 |---|---|---|
 | Segment basis (`vars.segment_condition` in `dbt/dbt_project.yml`) | `core.fct_offer_daily` (a full refresh is fine), `daily_segment_prices`, `offer_lifecycle`, `price_index_basket`, `price_index` | test `segment_basis_unchanged` fails |
-| Index base period or basket rules (`vars.index_*`) | nothing: `price_index` writes all its days again when the basket changes | test `price_index_one_basket` fails only if days from an older basket remain (a later base start) |
+| Index base period, renewal start or basket rules (`vars.index_*`) | nothing: `price_index` writes all its days again when a basket changes | test `price_index_current_baskets` fails only if days from older baskets remain (a later base start) |
 | A bug in a mart's SQL | that mart | — |
 | A parser fix that corrects raw rows | the marts that read the changed columns | — |
 

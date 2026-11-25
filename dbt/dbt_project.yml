@@ -31,10 +31,13 @@ vars:
   # Days the incremental models compute again on every run: a fallback or manual run can add offers to recent days,
   # and the TCMB rate of a day is only certain once the next bulletin is stored.
   lookback_days: 3
-  # Fixed-basket price index (plan 10.3), first draft; base period decided on 4.11.2026. The basket is every segment
+  # Price index (plan 10.3): 100 = the base period, decided on 4.11.2026 (K33). Its first basket is every segment
   # priced on at least index_min_day_share of the base days with at least index_min_offers offers a day on average.
+  # From index_renewal_start (the first day of a month) a new basket, chosen the same way from the month before,
+  # takes over on the first day of every month and is linked to the series.
   index_base_start: "2026-10-20"
   index_base_end: "2026-11-02"
+  index_renewal_start: "2026-12-01"
   index_min_day_share: 0.8
   index_min_offers: 2
   # Read-only database role of the Streamlit app: granted select on the marts after every run, once it exists.
